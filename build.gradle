@@ -1,0 +1,86 @@
+plugins {
+    id 'java'
+    id "org.flywaydb.flyway" version "7.3.1"
+    id 'org.springframework.boot' version '3.3.3'
+    id 'io.spring.dependency-management' version '1.1.6'
+    id 'application'
+}
+
+String dbName = System.getenv("DB_NAME") != null ? System.getenv("DB_NAME") : "klaro";
+String username = System.getenv("DB_USER") != null ? System.getenv("DB_USER") : "postgres";
+String password = System.getenv("DB_PASSWORD") != null ? System.getenv("DB_PASSWORD") : "postgres";
+
+group = 'org.example'
+version = '1.0-SNAPSHOT'
+
+repositories {
+    mavenCentral()
+}
+
+flyway {
+    url = "jdbc:postgresql://localhost:5432/"+dbName
+    user = username
+    password = password
+    locations = ["filesystem:${project.projectDir}/src/main/resources/migration"]
+    baselineVersion = "0"
+    baselineOnMigrate = true
+}
+
+dependencies {
+    implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
+    implementation 'com.squareup.okhttp3:okhttp:4.9.3'
+
+    // Updated Jackson dependencies to match Spring Boot 3.3.3
+    implementation 'com.fasterxml.jackson.core:jackson-databind:2.16.1'
+    implementation 'com.fasterxml.jackson.core:jackson-core:2.16.1'
+    implementation 'com.fasterxml.jackson.core:jackson-annotations:2.16.1'
+
+    implementation 'org.springframework.boot:spring-boot-starter-web'
+    implementation('org.springframework.boot:spring-boot-starter-data-jpa')
+    implementation 'org.postgresql:postgresql:42.7.2'
+    compileOnly 'org.projectlombok:lombok:1.18.30'
+    annotationProcessor 'org.projectlombok:lombok:1.18.30'
+    implementation "org.springframework.boot:spring-boot-starter-log4j2"
+    // Spring Security
+    implementation 'org.springframework.boot:spring-boot-starter-security'
+    // Spring Validation
+    implementation 'org.springframework.boot:spring-boot-starter-validation'
+
+    // Flyway for database migrations
+    implementation 'org.flywaydb:flyway-core'
+    implementation 'org.flywaydb:flyway-core:10.0.1'
+    implementation 'org.flywaydb:flyway-database-postgresql:10.0.1'
+
+//    // thymeleaf
+//    implementation 'org.springframework.boot:spring-boot-starter-thymeleaf'
+
+    // JWT (jjwt)
+    implementation 'io.jsonwebtoken:jjwt-api:0.11.5'
+    runtimeOnly 'io.jsonwebtoken:jjwt-impl:0.11.5'
+    runtimeOnly('io.jsonwebtoken:jjwt-jackson:0.11.5') // for JSON serialization
+
+    // Validation
+    implementation 'jakarta.validation:jakarta.validation-api:3.0.2'
+}
+
+configurations {
+    all*.exclude module : 'spring-boot-starter-logging'
+}
+
+task migrateCollab(type: org.flywaydb.gradle.task.FlywayMigrateTask) {
+    url = "jdbc:postgresql://localhost:5432/"+dbName
+    user = username
+    password = password
+    locations = ["filesystem:${project.projectDir}/src/main/resources/migration"]
+    baselineVersion = "0"
+    baselineOnMigrate = true
+}
+
+test {
+    useJUnitPlatform()
+}
+
+//To run the class name from command line using gradle run
+application {
+    mainClass = 'org.example.Main'
+}
