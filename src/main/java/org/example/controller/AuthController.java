@@ -18,7 +18,7 @@ import org.springframework.web.bind.annotation.*;
 
 
 @RestController
-@CrossOrigin(origins = "http://localhost:8081")
+@CrossOrigin(origins = "http://localhost:3001")
 @RequestMapping("/auth")
 
 @RequiredArgsConstructor
@@ -88,7 +88,7 @@ public class AuthController {
             System.out.println("Fetched fullName in controller: " + fullName); // Log fullName
             String role = authService.getRoleFromToken(token); // Fetch role from token
             System.out.println("Fetched role in controller: " + role); // Log role
-            UserInfoResponse response = new UserInfoResponse(email, fullName, role);
+            UserInfoResponse response = new UserInfoResponse(null,email, fullName, role);
             System.out.println("Response object: " + response); // Log response
             return ResponseEntity.ok(response);
 

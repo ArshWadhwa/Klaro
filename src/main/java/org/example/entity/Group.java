@@ -27,15 +27,15 @@ public class Group {
     @Size(max = 500, message = "Description must not exceed 500 characters")
     private String description;
 
-    @ManyToOne(fetch = FetchType.LAZY)
+    @ManyToOne(fetch = FetchType.EAGER)  // ✅ EAGER karo
     @JoinColumn(name = "owner_id")
     private User owner;
 
-    @ManyToMany(fetch = FetchType.LAZY)
+    @ManyToMany(fetch = FetchType.EAGER)  // ✅ ALREADY EAGER HAI - CONFIRM KARO
     @JoinTable(
-        name = "group_members",
-        joinColumns = @JoinColumn(name = "group_id"),
-        inverseJoinColumns = @JoinColumn(name = "user_id")
+            name = "group_members",
+            joinColumns = @JoinColumn(name = "group_id"),
+            inverseJoinColumns = @JoinColumn(name = "user_id")
     )
     private Set<User> members = new HashSet<>();
 
@@ -47,6 +47,9 @@ public class Group {
 
     @Column(name = "updated_at")
     private LocalDateTime updatedAt = LocalDateTime.now();
+
+    @Column(unique = true, nullable = false, length = 12)
+    private String inviteCode;
 
     // Helper methods
     public void addMember(User user) {
@@ -69,4 +72,4 @@ public class Group {
     protected void onUpdate() {
         this.updatedAt = LocalDateTime.now();
     }
-} 
+}

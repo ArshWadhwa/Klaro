@@ -28,13 +28,9 @@ public class AIController {
 
 
     @PostMapping("/generate")
-    public ResponseEntity<?> getAiResponse(@RequestBody AIRequest request) {
-        try {
-            AIResponse response = service.generateContent(request);
-            return ResponseEntity.ok(response);
-        } catch (IOException e) {
-            return ResponseEntity.status(500).body("Error generating AI response: " + e.getMessage());
-        }
+    public ResponseEntity<AIResponse> getAiResponse(@RequestBody AIRequest request) {
+        AIResponse response = service.generateContent(request);
+        return ResponseEntity.ok(response);
     }
 
 
