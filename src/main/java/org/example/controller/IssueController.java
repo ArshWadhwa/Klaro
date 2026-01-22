@@ -43,13 +43,13 @@ public class IssueController {
             String email = authService.getEmailFromToken(token);
             
             // Check if user can create issues in this project
-            boolean canCreateIssue = authService.isAdmin(token) || 
-                                   issueService.canUserCreateIssueInProject(email, request.getProjectId());
-            
-            if (!canCreateIssue) {
-                return ResponseEntity.status(HttpStatus.FORBIDDEN)
-                    .body("You don't have permission to create issues in this project");
-            }
+//            boolean canCreateIssue = authService.isAdmin(token) ||
+//                                   issueService.canUserCreateIssueInProject(email, request.getProjectId());
+//
+//            if (!canCreateIssue) {
+//                return ResponseEntity.status(HttpStatus.FORBIDDEN)
+//                    .body("You don't have permission to create issues in this project");
+//            }
             
             IssueResponse response = issueService.createIssue(request, email);
             return ResponseEntity.ok(response);

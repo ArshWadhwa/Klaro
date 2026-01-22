@@ -18,4 +18,5 @@ public class GroupResponse {
     private LocalDateTime updatedAt;
     private int memberCount;
     private int projectCount;
+    private String inviteCode;
 } 

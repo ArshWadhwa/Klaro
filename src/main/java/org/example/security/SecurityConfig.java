@@ -36,6 +36,7 @@ public class SecurityConfig {
                         .requestMatchers("/api/issues/**").authenticated()
                         .requestMatchers("/comments/**").authenticated()
                         .requestMatchers("/notifications/**").authenticated()
+                        .requestMatchers("/api/files/**").authenticated()
                         .requestMatchers("/ai/**").permitAll()
                         .anyRequest().authenticated()
                 )
@@ -49,8 +50,8 @@ public class SecurityConfig {
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
-        configuration.setAllowedOrigins(Arrays.asList("http://localhost:8080")); // Update frontend URL
-        configuration.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "DELETE", "OPTIONS")); // Allow all necessary methods
+        configuration.setAllowedOrigins(Arrays.asList("http://localhost:8080","http://localhost:3001")); // Update frontend URL
+        configuration.setAllowedMethods(Arrays.asList("GET", "POST", "PUT","PATCH", "DELETE", "OPTIONS")); // Allow all necessary methods
         configuration.setAllowedHeaders(Arrays.asList("Authorization", "Content-Type")); // Allow required headers
         configuration.setAllowCredentials(true); // Enable credentials
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();

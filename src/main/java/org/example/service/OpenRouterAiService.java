@@ -1,5 +1,7 @@
 package org.example.service;
 
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.example.group.AIRequest;
 import org.example.group.AIResponse;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -29,58 +31,66 @@ public class OpenRouterAiService {
     private final OkHttpClient client = new OkHttpClient();
     private final ObjectMapper mapper = new ObjectMapper();
 
-    public AIResponse generateContent(AIRequest request) throws IOException {
-        String prompt = request.getIssueDescription();
-        logger.info("Generating content for prompt: {}", prompt);
+    public AIResponse generateContent(AIRequest request) {
+        try {
+            ObjectNode root = mapper.createObjectNode();
+            root.put("model", "meta-llama/llama-3.3-70b-instruct:free");
 
-        String json = """
-                {
-                  "model": "meta-llama/llama-3.3-70b-instruct:free",
-                  "messages": [
-                    {
-                      "role": "user",
-                      "content": "%s"2
-                    }
-                  ]
+            ArrayNode messages = mapper.createArrayNode();
+
+            ObjectNode system = mapper.createObjectNode();
+            system.put("role", "system");
+            system.put("content", "You are an AI assistant helping users understand a document.");
+            messages.add(system);
+
+            ObjectNode user = mapper.createObjectNode();
+            user.put("role", "user");
+            user.put("content", request.getIssueDescription());
+            messages.add(user);
+
+            root.set("messages", messages);
+
+            RequestBody body = RequestBody.create(
+                    mapper.writeValueAsString(root),
+                    MediaType.get("application/json")
+            );
+
+            Request httpRequest = new Request.Builder()
+                    .url(OPENROUTER_API_URL)
+                    .addHeader("Authorization", "Bearer " + apiKey)
+                    .addHeader("HTTP-Referer", siteUrl)
+                    .addHeader("X-Title", siteName)
+                    .post(body)
+                    .build();
+
+            try (Response response = client.newCall(httpRequest).execute()) {
+
+                if (!response.isSuccessful()) {
+                    String errorBody = response.body() != null ? response.body().string() : "No response body";
+                    throw new ResponseStatusException(
+                            HttpStatus.valueOf(response.code()),
+                            "OpenRouter API failed: " + errorBody
+                    );
                 }
-                """.formatted(prompt);
 
-        RequestBody body = RequestBody.create(json, MediaType.get("application/json"));
+                String responseBody = response.body().string();
+                JsonNode rootNode = mapper.readTree(responseBody);
+                String output = rootNode
+                        .path("choices")
+                        .get(0)
+                        .path("message")
+                        .path("content")
+                        .asText();
 
-        Request httpRequest = new Request.Builder()
-                .url(OPENROUTER_API_URL)
-                .addHeader("Authorization", "Bearer " + apiKey)
-                .addHeader("HTTP-Referer", siteUrl)
-                .addHeader("X-Title", siteName)
-                .post(body)
-                .build();
-
-        try (Response response = client.newCall(httpRequest).execute()) {
-            if (!response.isSuccessful()) {
-                String errorBody = response.body() != null ? response.body().string() : "No response body";
-                logger.error("OpenRouter API failed: {} - {}", response.code(), errorBody);
-                if (response.code() == 402) {
-                    throw new ResponseStatusException(HttpStatus.PAYMENT_REQUIRED, "Insufficient credits for OpenRouter API: " + errorBody);
-                } else if (response.code() == 429) {
-                    throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS, "Rate limit exceeded for OpenRouter API: " + errorBody);
-                }
-                throw new ResponseStatusException(HttpStatus.valueOf(response.code()), "OpenRouter API failed: " + errorBody);
+                return new AIResponse(output);
             }
 
-            String responseBody = response.body().string();
-            logger.debug("OpenRouter API response: {}", responseBody);
-            JsonNode root = mapper.readTree(responseBody);
-            JsonNode choices = root.path("choices");
-            if (choices.isEmpty()) {
-                logger.error("No choices in OpenRouter API response");
-                throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "No choices returned by OpenRouter API");
-            }
-            String output = choices.get(0).path("message").path("content").asText();
-
-            return new AIResponse(output);
         } catch (Exception e) {
-            logger.error("Error processing OpenRouter API response: {}", e.getMessage(), e);
-            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "Failed to generate content: " + e.getMessage(), e);
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_GATEWAY,
+                    "Failed to generate AI response",
+                    e
+            );
         }
     }
 }
