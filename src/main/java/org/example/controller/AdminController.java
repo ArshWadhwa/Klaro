@@ -14,7 +14,11 @@ import java.util.Set;
 import java.util.stream.Collectors;
 
 @RestController
-@CrossOrigin(origins = "http://localhost:3001")
+@CrossOrigin(origins = {
+        "http://localhost:3001",
+        "https://1e27-2405-201-5803-9887-f09f-e037-ca69-f5e6.ngrok-free.app"
+})
+
 @RequestMapping("/admin")
 public class AdminController {
 
