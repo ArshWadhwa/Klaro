@@ -6,6 +6,7 @@ import org.example.group.CommentResponse;
 import org.example.group.CreateCommentRequest;
 import org.example.repository.CommentRepository;
 import org.example.repository.IssueRepository;
+import org.example.repository.UserRepository;
 import org.example.service.AuthService;
 import org.example.service.CommentService;
 import org.example.service.IssueService;
@@ -35,12 +36,19 @@ public class CommentController {
     @Autowired private IssueService issueService;
     @Autowired private CommentRepository commentRepository;
     @Autowired private IssueRepository issueRepository;
+    @Autowired private UserRepository userRepository;
 
 
     @PostMapping("/issue/{issueId}")
-    public CommentResponse addComment(@PathVariable Long issueId , @RequestBody CreateCommentRequest request,@AuthenticationPrincipal User user){
+    public CommentResponse addComment(@PathVariable Long issueId, @RequestBody CreateCommentRequest request,
+                                       @AuthenticationPrincipal Object principal){
         Issue issue= issueRepository.findById(issueId)
                 .orElseThrow(() -> new RuntimeException("Issue not found"));
+
+        // Get user from email (principal is String email now)
+        String email = principal.toString();
+        User user = userRepository.findByEmail(email)
+                .orElseThrow(() -> new RuntimeException("User not found"));
 
         Comment comment=new Comment();
         comment.setContent(request.getContent());

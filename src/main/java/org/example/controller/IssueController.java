@@ -1,6 +1,7 @@
 package org.example.controller;
 
 
+import okhttp3.Response;
 import org.example.entity.Issue;
 import org.example.entity.User;
 import org.example.group.AIResponse;
@@ -24,7 +25,11 @@ import java.util.List;
 import java.util.stream.Collectors;
 
 @RestController
-@CrossOrigin(origins = "http://localhost:3001")
+@CrossOrigin(origins = {
+        "http://localhost:3001",
+        "https://1e27-2405-201-5803-9887-f09f-e037-ca69-f5e6.ngrok-free.app"
+})
+
 @RequestMapping("/api/issues")
 public class IssueController {
     @Autowired private IssueService issueService;
@@ -172,6 +177,32 @@ public class IssueController {
             return ResponseEntity.badRequest().body(e.getMessage());
         }
     }
+
+
+    @DeleteMapping("/{issueId}/delete")
+    public ResponseEntity<?> deleteIssue(@PathVariable Long issueId,
+                                         @RequestHeader("Authorization") String authHeader) {
+
+
+        try {
+            // 1️⃣ Validate header
+            if (authHeader == null || !authHeader.startsWith("Bearer ")) {
+                return ResponseEntity
+                        .status(HttpStatus.UNAUTHORIZED)
+                        .body("Missing or invalid authorization header");
+            }
+            String  token = authHeader.substring(7);
+            String email = authService.getEmailFromToken(token);
+                issueService.deleteIssue(issueId,email);
+                return ResponseEntity.ok("Issue deleted success");
+
+
+
+    }catch (RuntimeException e) {
+        return ResponseEntity.badRequest().body(e.getMessage());
+    }
+
+}
 
     // Search and filter issues
     @GetMapping("/search")

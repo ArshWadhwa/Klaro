@@ -2,6 +2,7 @@ package org.example.entity;
 
 import jakarta.persistence.*;
 import lombok.Data;
+import lombok.ToString;
 
 import java.time.LocalDateTime;
 
@@ -30,14 +31,22 @@ public class Issue {
     @Enumerated(EnumType.STRING)
     private IssueType type = IssueType.TASK;
 
+    @ToString.Exclude // Prevent circular reference in toString()
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "created_by")
     private User createdBy;
 
+    @ToString.Exclude // Multi-tenant: Organization this issue belongs to
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "organization_id", nullable = true)
+    private Organization organization;
+
+    @ToString.Exclude // Prevent circular reference in toString()
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "assigned_to")
     private User assignedTo;
 
+    @ToString.Exclude // Prevent circular reference in toString()
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "project_id")
     private Project project;

@@ -19,10 +19,10 @@ import java.util.Map;
 
 @RestController
 //
-@CrossOrigin(origins = {
-        "http://localhost:3001",
-        "https://1e27-2405-201-5803-9887-f09f-e037-ca69-f5e6.ngrok-free.app"
-})
+//@CrossOrigin(origins = {
+//        "http://localhost:3001",
+//        "https://1e27-2405-201-5803-9887-f09f-e037-ca69-f5e6.ngrok-free.app"
+//})
 
 @RequestMapping("/groups")
 
@@ -43,10 +43,13 @@ public class GroupController {
             if (authHeader != null && authHeader.startsWith("Bearer ")) {
                 String token = authHeader.substring(7);
                 String email = authService.getEmailFromToken(token);
+                String role = authService.getRoleFromToken(token);
+                System.out.println("🔍 Create Group - Email: " + email + ", Role: " + role);
                 
                 // Only admins can create groups
                 if (!authService.isAdmin(token)) {
-                    return ResponseEntity.status(HttpStatus.FORBIDDEN).body("Only admins can create groups");
+                    System.out.println("❌ User is NOT admin. Role in token: " + role);
+                    return ResponseEntity.status(HttpStatus.FORBIDDEN).body("Only admins can create groups. Your role: " + role);
                 }
                 
                 GroupResponse response = groupService.createGroup(request, email);

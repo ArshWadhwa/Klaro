@@ -1,18 +1,24 @@
 package org.example.entity;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import com.fasterxml.jackson.annotation.JsonManagedReference;
 import jakarta.persistence.*;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
-import lombok.Data;
+import lombok.*;
 
 import java.time.LocalDateTime;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 
-@Entity
+
 @Table(name = "groups")
-@Data
+@Getter
+@Setter
+@NoArgsConstructor
+@AllArgsConstructor
+@Entity
 public class Group {
 
     @Id
@@ -21,24 +27,33 @@ public class Group {
 
     @NotBlank(message = "Group name is required")
     @Size(min = 2, max = 100, message = "Group name must be between 2 and 100 characters")
-    @Column(unique = true)
     private String name;
 
     @Size(max = 500, message = "Description must not exceed 500 characters")
     private String description;
 
-    @ManyToOne(fetch = FetchType.EAGER)  // ✅ EAGER karo
+    @ToString.Exclude // Prevent circular reference in toString()
+    @ManyToOne(fetch = FetchType.LAZY)  // Changed to LAZY - use JOIN FETCH in queries when needed
     @JoinColumn(name = "owner_id")
     private User owner;
 
-    @ManyToMany(fetch = FetchType.EAGER)  // ✅ ALREADY EAGER HAI - CONFIRM KARO
+    @ToString.Exclude // Multi-tenant: Organization this group belongs to
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "organization_id", nullable = true)
+    private Organization organization;
+
+    @ToString.Exclude // Prevent circular reference in toString()
+    @ManyToMany(fetch = FetchType.LAZY)  // Changed to LAZY - use JOIN FETCH in queries when needed
     @JoinTable(
             name = "group_members",
             joinColumns = @JoinColumn(name = "group_id"),
             inverseJoinColumns = @JoinColumn(name = "user_id")
     )
+ // ← ADD THIS
+    @JsonIgnoreProperties("groups")
     private Set<User> members = new HashSet<>();
 
+    @ToString.Exclude // Prevent circular reference in toString()
     @OneToMany(mappedBy = "group", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
     private List<Project> projects;
 
@@ -71,5 +86,17 @@ public class Group {
     @PreUpdate
     protected void onUpdate() {
         this.updatedAt = LocalDateTime.now();
+    }
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (!(o instanceof Group)) return false;
+        Group group = (Group) o;
+        return id != null && id.equals(group.id);
+    }
+
+    @Override
+    public int hashCode() {
+        return getClass().hashCode();
     }
 }
