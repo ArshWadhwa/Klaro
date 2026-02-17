@@ -22,5 +22,7 @@ import java.time.LocalDateTime;
         private String uploadedByEmail;
         private LocalDateTime uploadedAt;
         private LocalDateTime updatedAt;
+        private Long projectId;
+private String projectName;
 
 }

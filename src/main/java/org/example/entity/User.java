@@ -1,19 +1,20 @@
 package org.example.entity;
 
+import com.fasterxml.jackson.annotation.JsonBackReference;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
-import lombok.AllArgsConstructor;
-import lombok.Data;
-import lombok.NoArgsConstructor;
+import lombok.*;
 
 import java.util.List;
 import java.util.Set;
 
 @Entity
 @Table(name = "users")
-@Data
+@Getter
+@Setter
 @NoArgsConstructor
 @AllArgsConstructor
 public class User {
@@ -40,13 +41,34 @@ public class User {
     @Column(name = "role")
     private Role role = Role.ROLE_USER; // Default to ROLE_USER
 
+    @ToString.Exclude // Prevent circular reference in toString()
     @OneToMany(mappedBy = "createdBy", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
     private List<Project> projects;
 
+    @ToString.Exclude // Prevent circular reference in toString()
     @OneToMany(mappedBy = "owner", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
     private List<Group> ownedGroups;
 
+    @ToString.Exclude // Prevent circular reference in toString()
     @ManyToMany(mappedBy = "members", fetch = FetchType.LAZY)
+    @JsonIgnore
     private Set<Group> memberGroups;
 
+    // Multi-tenancy: User's memberships in organizations
+    @ToString.Exclude
+    @OneToMany(mappedBy = "user", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
+    private List<Membership> memberships;
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (!(o instanceof User)) return false;
+        User user = (User) o;
+        return id != null && id.equals(user.id);
+    }
+
+    @Override
+    public int hashCode() {
+        return getClass().hashCode();
+    }
 }

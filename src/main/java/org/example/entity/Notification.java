@@ -20,6 +20,11 @@ public class Notification {
     @Column(nullable = false)
     private String message;
 
+    // Multi-tenant: Organization (nullable for backward compatibility)
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "organization_id")
+    private Organization organization;
+
     @Column(name = "read")
     private boolean read = false;
 

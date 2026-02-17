@@ -4,6 +4,7 @@ import jakarta.persistence.*;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 import lombok.Data;
+import lombok.ToString;
 
 import java.time.LocalDateTime;
 
@@ -23,10 +24,17 @@ public class Project {
     @Size(max = 1000, message = "Description must not exceed 1000 characters")
     private String description;
 
+    @ToString.Exclude // Prevent circular reference in toString()
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "created_by")
     private User createdBy;
 
+    @ToString.Exclude // Multi-tenant: Organization this project belongs to
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "organization_id", nullable = true)
+    private Organization organization;
+
+    @ToString.Exclude // Prevent circular reference in toString()
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "group_id")
     private Group group;

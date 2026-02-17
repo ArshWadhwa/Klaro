@@ -1,7 +1,6 @@
 package org.example.group;
 
 import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.Size;
 import lombok.Data;
 
@@ -17,6 +16,5 @@ public class CreateGroupRequest {
     @Size(max = 500, message = "Description must not exceed 500 characters")
     private String description;
 
-    @NotEmpty(message = "At least one member email is required")
-    private List<String> memberEmails;
+    private List<String> memberEmails; // Optional - can add members later
 } 
