@@ -20,8 +20,17 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     private JwtUtil jwtUtil;
 
     @Override
-    protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
+    protected void doFilterInternal(HttpServletRequest request,
+                                    HttpServletResponse response,
+                                    FilterChain filterChain)
             throws ServletException, IOException {
+
+        // 🔥 CORS preflight ko JWT se bachao
+        if (request.getMethod().equalsIgnoreCase("OPTIONS")) {
+            filterChain.doFilter(request, response);
+            return;
+        }
+
         String requestURI = request.getRequestURI();
         System.out.println("Request URL: " + request.getRequestURL());
         System.out.println("Request URI: " + requestURI);
@@ -56,16 +65,19 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             if (jwtUtil.validateToken(token)) {
                 String email = jwtUtil.extractEmail(token);
                 System.out.println("Token validated, email: " + email);
+                
                 UsernamePasswordAuthenticationToken authentication =
                         new UsernamePasswordAuthenticationToken(email, null, null);
                 authentication.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
                 SecurityContextHolder.getContext().setAuthentication(authentication);
-                System.out.println("Authentication set for email: " + email);
+                System.out.println("Authentication set for user: " + email);
             } else {
                 System.out.println("Token validation failed for token: " + token);
                 // For protected endpoints with invalid tokens, let Spring Security handle the 401
             }
-        } else {
+        }
+
+        else {
             System.out.println("No Authorization header or incorrect format for protected endpoint");
             // For protected endpoints without tokens, let Spring Security handle the 401
         }

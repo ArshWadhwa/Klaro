@@ -4,7 +4,6 @@ import org.example.entity.Group;
 import org.example.entity.User;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
-import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
@@ -18,28 +17,54 @@ public interface GroupRepository extends JpaRepository<Group, Long> {
 
     boolean existsByName(String name);
 
-    List<Group> findByOwner(User owner);
+    // 🎯 Per-organization unique group name check
+    boolean existsByNameAndOrganizationId(String name, Long organizationId);
+
+    // 🥇 LEVEL 1: DTO Projection + JOIN FETCH (BEST for immediate member loading)
+    // Explicit JOIN control, DISTINCT avoids duplication, predictable SQL
+    @Query("""
+        SELECT DISTINCT g
+        FROM Group g
+        JOIN FETCH g.owner
+        LEFT JOIN FETCH g.members
+        WHERE g.owner = :owner
+    """)
+    List<Group> findByOwner(@Param("owner") User owner);
 
     @Query("SELECT g FROM Group g JOIN g.members m WHERE m = :user")
     List<Group> findByMember(@Param("user") User user);
 
-    @Query("SELECT g FROM Group g WHERE g.owner = :user OR :user MEMBER OF g.members")
+    // 🥇 LEVEL 1: Optimized with JOIN FETCH
+    @Query("""
+        SELECT DISTINCT g
+        FROM Group g
+        JOIN FETCH g.owner
+        LEFT JOIN FETCH g.members
+        WHERE g.owner = :user OR :user MEMBER OF g.members
+    """)
     List<Group> findByOwnerOrMember(@Param("user") User user);
 
     @Query("SELECT g FROM Group g WHERE g.name LIKE %:searchTerm% OR g.description LIKE %:searchTerm%")
     List<Group> searchGroups(@Param("searchTerm") String searchTerm);
 
-    // ✅ USE @EntityGraph instead of manual JOIN FETCH
-    @EntityGraph(attributePaths = {"members"})
-    @Query("SELECT g FROM Group g WHERE g.id = :id")
+    // 🥇 LEVEL 1: JOIN FETCH for single group lookup
+    @Query("""
+        SELECT g
+        FROM Group g
+        JOIN FETCH g.owner
+        LEFT JOIN FETCH g.members
+        WHERE g.id = :id
+    """)
     Optional<Group> findByIdWithMembers(@Param("id") Long id);
 
-    // GroupRepository.java
-
-    @Query(value = "SELECT DISTINCT g.* FROM groups g " +
-            "INNER JOIN group_members gm ON g.id = gm.group_id " +
-            "WHERE gm.user_id = :userId",
-            nativeQuery = true)
+    // 🥇 LEVEL 1: Optimized with JOIN FETCH to avoid N+1 queries
+    @Query("""
+        SELECT DISTINCT g
+        FROM Group g
+        JOIN FETCH g.owner
+        LEFT JOIN FETCH g.members m
+        WHERE m.id = :userId
+    """)
     List<Group> findGroupsByMemberId(@Param("userId") Long userId);
 
     // ✅ NATIVE QUERY to fetch members
@@ -59,12 +84,23 @@ public interface GroupRepository extends JpaRepository<Group, Long> {
 
     List<Group> findByOwnerOrMembers(User owner, User member);
 
-    @EntityGraph(attributePaths = {"members"})
-    @Query("SELECT DISTINCT g FROM Group g WHERE g.owner = :user OR :user MEMBER OF g.members")
+    // 🥇 LEVEL 1: JOIN FETCH for comprehensive group loading
+    @Query("""
+        SELECT DISTINCT g
+        FROM Group g
+        JOIN FETCH g.owner
+        LEFT JOIN FETCH g.members
+        WHERE g.owner = :user OR :user MEMBER OF g.members
+    """)
     List<Group> findByOwnerOrMemberWithMembers(@Param("user") User user);
 
-    @EntityGraph(attributePaths = {"members"})
-    @Query("SELECT DISTINCT g FROM Group g")
+    // 🥇 LEVEL 1: JOIN FETCH for all groups
+    @Query("""
+        SELECT DISTINCT g
+        FROM Group g
+        JOIN FETCH g.owner
+        LEFT JOIN FETCH g.members
+    """)
     List<Group> findAllWithMembers();
 
     boolean existsByInviteCode(String code);

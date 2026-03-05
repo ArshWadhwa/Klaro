@@ -1,6 +1,7 @@
 package org.example.service;
 
 import org.example.entity.Issue;
+import org.example.entity.Organization;
 import org.example.entity.Project;
 import org.example.entity.Role;
 import org.example.entity.User;
@@ -9,10 +10,14 @@ import org.example.group.AIResponse;
 import org.example.group.CreateIssueRequest;
 import org.example.group.IssueResponse;
 import org.example.repository.IssueRepository;
+import org.example.repository.OrganizationRepository;
 import org.example.repository.ProjectRepository;
 import org.example.repository.UserRepository;
+import org.example.security.TenantContext;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+
+import static com.cloudinary.AccessControlRule.AccessType.token;
 
 @Service
 public class IssueService {
@@ -24,10 +29,13 @@ public class IssueService {
     @Autowired
     private UserRepository userRepository;
     @Autowired
+    private OrganizationRepository organizationRepository;
+    @Autowired
     private OpenRouterAiService aiService;
     @Autowired
     private NotificationService notificationService;
-
+    @Autowired
+    private AuthService authService;
     public IssueResponse createIssue(CreateIssueRequest request,String currentUserEmail) {
         User creator = userRepository.findByEmail(currentUserEmail)
                 .orElseThrow(() -> new RuntimeException("User not found"));
@@ -122,6 +130,20 @@ public class IssueService {
         } catch (Exception e) {
             throw new RuntimeException("Failed to get AI recommendation: " + e.getMessage());
         }
+    }
+
+    public void deleteIssue(Long issueId,String email ){
+        Issue issue = issueRepository.findById(issueId)
+                .orElseThrow(() -> new RuntimeException("Issue not found"));
+//
+//        if (!issue.getCreatedBy().equals(email) && !authService.isAdmin(email)) {
+//            throw new RuntimeException("You are not entitled to delete this issue");
+//        }
+
+
+        issueRepository.delete(issue);
+
+
     }
 
     public IssueResponse updateIssueStatus(

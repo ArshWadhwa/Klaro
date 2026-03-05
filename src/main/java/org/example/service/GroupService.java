@@ -1,14 +1,17 @@
 package org.example.service;
 
 import org.example.entity.Group;
+import org.example.entity.Organization;
 import org.example.entity.User;
 import org.example.entity.Project;
 import org.example.group.CreateGroupRequest;
 import org.example.group.GroupMemberResponse;
 import org.example.group.GroupResponse;
 import org.example.repository.GroupRepository;
+import org.example.repository.OrganizationRepository;
 import org.example.repository.UserRepository;
 import org.example.repository.ProjectRepository;
+import org.example.security.TenantContext;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -32,6 +35,9 @@ public class GroupService {
     private ProjectRepository projectRepository;
     @Autowired
     private AuthService authService;
+    
+    @Autowired
+    private OrganizationRepository organizationRepository;
 
     @Autowired
     private NotificationService notificationService;
@@ -53,17 +59,19 @@ public class GroupService {
         group.setInviteCode(generateUniqueInviteCode());
         group.addMember(currentUser); // Owner is automatically a member
 
-        // Add members by email
-        Set<String> addedEmails = request.getMemberEmails().stream()
-                .map(email -> email.trim().toLowerCase())
-                .collect(Collectors.toSet());
+        // Add members by email (if provided)
+        if (request.getMemberEmails() != null && !request.getMemberEmails().isEmpty()) {
+            Set<String> addedEmails = request.getMemberEmails().stream()
+                    .map(email -> email.trim().toLowerCase())
+                    .collect(Collectors.toSet());
 
-        List<User> existingUsers = userRepository.findAll().stream()
-                .filter(user -> addedEmails.contains(user.getEmail().toLowerCase()))
-                .collect(Collectors.toList());
+            List<User> existingUsers = userRepository.findAll().stream()
+                    .filter(user -> addedEmails.contains(user.getEmail().toLowerCase()))
+                    .collect(Collectors.toList());
 
-        for (User user : existingUsers) {
-            group.addMember(user);
+            for (User user : existingUsers) {
+                group.addMember(user);
+            }
         }
 
         Group savedGroup = groupRepository.save(group);

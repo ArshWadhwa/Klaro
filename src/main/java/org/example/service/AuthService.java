@@ -1,6 +1,7 @@
 package org.example.service;
 
 import org.example.entity.RefreshToken;
+import org.example.entity.Role;
 import org.example.entity.User;
 import org.example.group.SigninRequest;
 import org.example.group.SigninResponse;
@@ -34,6 +35,7 @@ public class AuthService {
     private RefreshTokenService refreshTokenService;
 
 
+
     public String register(SignupRequest signupRequest){
         System.out.println("REGISTER METHOD HIT");
 
@@ -54,7 +56,7 @@ public class AuthService {
         user.setRole(signupRequest.getRole()); // Set the role from request
 
         System.out.println("Saving user to DB: " + user.getEmail() + " with role: " + user.getRole());
-        userRepository.save(user);
+        user = userRepository.save(user);
 
         return "User registered successfully!";
     }

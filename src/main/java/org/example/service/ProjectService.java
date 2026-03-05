@@ -1,12 +1,15 @@
 package org.example.service;
 
+import org.example.entity.Organization;
 import org.example.entity.User;
 import org.example.entity.Group;
 import org.example.group.CreateProjectRequest;
 import org.example.entity.Project;
 import org.example.group.ProjectResponse;
+import org.example.repository.OrganizationRepository;
 import org.example.repository.ProjectRepository;
 import org.example.repository.UserRepository;
+import org.example.security.TenantContext;
 import org.example.repository.GroupRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -21,7 +24,7 @@ public class ProjectService {
     @Autowired private UserRepository userRepository;
     @Autowired private ProjectRepository projectRepository;
     @Autowired private GroupRepository groupRepository;
-
+    @Autowired private OrganizationRepository organizationRepository;
 
     public ProjectResponse createProject(CreateProjectRequest request, String currentUserEmail){
         User user = userRepository.findByEmail(currentUserEmail)
@@ -40,8 +43,6 @@ public class ProjectService {
         project.setGroup(group);
 
         Project saved= projectRepository.save(project);
-
-
         ProjectResponse response= new ProjectResponse();
         response.setName(saved.getName());
         response.setId(saved.getId());
@@ -73,6 +74,7 @@ public class ProjectService {
 
     public List<ProjectResponse> getAllProjects() {
         List<Project> projects = projectRepository.findAll();
+        
         return projects.stream()
                 .map(project -> {
                     ProjectResponse response = new ProjectResponse();

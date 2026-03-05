@@ -10,87 +10,116 @@ import okhttp3.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
-import org.springframework.web.server.ResponseStatusException;
+
 import java.io.IOException;
+import java.util.concurrent.TimeUnit;
+
 @Service
 public class OpenRouterAiService {
+
     private static final Logger logger = LoggerFactory.getLogger(OpenRouterAiService.class);
 
-    @Value("${openrouter.api.key}")
-    private String apiKey;
+    @Value("${groq.api.key}")
+    private String groqApiKey;
 
-    @Value("${openrouter.site.url}")
-    private String siteUrl; // e.g., http://localhost:8080 or your app's URL
+    private static final String GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions";
 
-    @Value("${openrouter.site.name}")
-    private String siteName; // e.g., YourAppName
+    // Groq free models — tried in order, first working one wins
+    private static final String[] GROQ_MODELS = {
+        "llama-3.3-70b-versatile",
+        "llama3-8b-8192",
+        "mixtral-8x7b-32768",
+        "gemma2-9b-it"
+    };
 
-    private static final String OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions";
-    private final OkHttpClient client = new OkHttpClient();
+    private final OkHttpClient client = new OkHttpClient.Builder()
+            .connectTimeout(30, TimeUnit.SECONDS)
+            .readTimeout(60, TimeUnit.SECONDS)
+            .writeTimeout(30, TimeUnit.SECONDS)
+            .build();
+
     private final ObjectMapper mapper = new ObjectMapper();
 
     public AIResponse generateContent(AIRequest request) {
-        try {
-            ObjectNode root = mapper.createObjectNode();
-            root.put("model", "meta-llama/llama-3.3-70b-instruct:free");
+        Exception lastException = null;
 
-            ArrayNode messages = mapper.createArrayNode();
+        for (String model : GROQ_MODELS) {
+            try {
+                logger.info("🤖 Trying Groq model: {}", model);
+                String result = callGroq(model, request.getIssueDescription());
+                logger.info("✅ AI response received from Groq model: {}", model);
+                return new AIResponse(result);
+            } catch (Exception e) {
+                logger.warn("⚠️ Groq model {} failed: {} — trying next...", model, e.getMessage());
+                lastException = e;
+            }
+        }
 
-            ObjectNode system = mapper.createObjectNode();
-            system.put("role", "system");
-            system.put("content", "You are an AI assistant helping users understand a document.");
-            messages.add(system);
+        logger.error("❌ All Groq models failed. Last error: {}",
+                lastException != null ? lastException.getMessage() : "unknown");
+        return new AIResponse("⚠️ AI service is temporarily unavailable. Please try again in a moment.");
+    }
 
-            ObjectNode user = mapper.createObjectNode();
-            user.put("role", "user");
-            user.put("content", request.getIssueDescription());
-            messages.add(user);
+    private String callGroq(String model, String userContent) throws IOException {
+        ObjectNode root = mapper.createObjectNode();
+        root.put("model", model);
+        root.put("temperature", 0.7);
+        root.put("max_tokens", 1024);
+        root.put("stream", false);
 
-            root.set("messages", messages);
+        ArrayNode messages = mapper.createArrayNode();
 
-            RequestBody body = RequestBody.create(
-                    mapper.writeValueAsString(root),
-                    MediaType.get("application/json")
-            );
+        ObjectNode system = mapper.createObjectNode();
+        system.put("role", "system");
+        system.put("content", "You are a helpful AI assistant. Answer questions based on the provided document context concisely and accurately.");
+        messages.add(system);
 
-            Request httpRequest = new Request.Builder()
-                    .url(OPENROUTER_API_URL)
-                    .addHeader("Authorization", "Bearer " + apiKey)
-                    .addHeader("HTTP-Referer", siteUrl)
-                    .addHeader("X-Title", siteName)
-                    .post(body)
-                    .build();
+        ObjectNode user = mapper.createObjectNode();
+        user.put("role", "user");
+        user.put("content", userContent);
+        messages.add(user);
 
-            try (Response response = client.newCall(httpRequest).execute()) {
+        root.set("messages", messages);
 
-                if (!response.isSuccessful()) {
-                    String errorBody = response.body() != null ? response.body().string() : "No response body";
-                    throw new ResponseStatusException(
-                            HttpStatus.valueOf(response.code()),
-                            "OpenRouter API failed: " + errorBody
-                    );
-                }
+        RequestBody body = RequestBody.create(
+                mapper.writeValueAsString(root),
+                MediaType.get("application/json; charset=utf-8")
+        );
 
-                String responseBody = response.body().string();
-                JsonNode rootNode = mapper.readTree(responseBody);
-                String output = rootNode
-                        .path("choices")
-                        .get(0)
-                        .path("message")
-                        .path("content")
-                        .asText();
+        Request httpRequest = new Request.Builder()
+                .url(GROQ_API_URL)
+                .addHeader("Authorization", "Bearer " + groqApiKey)
+                .addHeader("Content-Type", "application/json")
+                .post(body)
+                .build();
 
-                return new AIResponse(output);
+        try (Response response = client.newCall(httpRequest).execute()) {
+            String responseBody = response.body() != null ? response.body().string() : "";
+
+            if (!response.isSuccessful()) {
+                logger.error("Groq [{}] HTTP {}: {}", model, response.code(), responseBody);
+                throw new IOException("HTTP " + response.code() + ": " + responseBody);
             }
 
-        } catch (Exception e) {
-            throw new ResponseStatusException(
-                    HttpStatus.BAD_GATEWAY,
-                    "Failed to generate AI response",
-                    e
-            );
+            JsonNode rootNode = mapper.readTree(responseBody);
+
+            if (rootNode.has("error")) {
+                String errorMsg = rootNode.path("error").path("message").asText(responseBody);
+                throw new IOException("Groq API error: " + errorMsg);
+            }
+
+            JsonNode choices = rootNode.path("choices");
+            if (choices.isMissingNode() || choices.isEmpty()) {
+                throw new IOException("No choices in Groq response: " + responseBody);
+            }
+
+            String content = choices.get(0).path("message").path("content").asText("");
+            if (content.isBlank()) {
+                throw new IOException("Empty content from Groq: " + responseBody);
+            }
+
+            return content;
         }
     }
 }

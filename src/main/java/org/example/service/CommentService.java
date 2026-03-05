@@ -2,8 +2,13 @@ package org.example.service;
 
 
 import org.example.entity.Comment;
+import org.example.entity.Issue;
+import org.example.entity.Organization;
 import org.example.group.CommentResponse;
 import org.example.repository.CommentRepository;
+import org.example.repository.IssueRepository;
+import org.example.repository.OrganizationRepository;
+import org.example.security.TenantContext;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -13,15 +18,31 @@ import java.util.*;
 import static org.yaml.snakeyaml.events.Event.ID.Comment;
 
 @Service
-@RequiredArgsConstructor
-//@RequiredArgsConstructor (from Lombok) generates a constructor with required arguments (final fields and fields marked with @NonNull).
-//This allows Spring to inject CommentRepository via constructor injection, which is a recommended practice.
-//So yes, it is necessary for constructor-based dependency injection when using Lombok
 public class CommentService {
 
+    @Autowired
+    private CommentRepository commentRepository;
+    
+    @Autowired
+    private IssueRepository issueRepository;
+    
+    @Autowired
+    private OrganizationRepository organizationRepository;
 
-    private final CommentRepository commentRepository;
-
+    /**
+     * Create comment on an issue
+     */
+    public Comment createComment(Long issueId, String content, org.example.entity.User author) {
+        Issue issue = issueRepository.findById(issueId)
+                .orElseThrow(() -> new RuntimeException("Issue not found"));
+        
+        Comment comment = new Comment();
+        comment.setContent(content);
+        comment.setAuthor(author);
+        comment.setIssue(issue);
+        
+        return commentRepository.save(comment);
+    }
 
     public CommentResponse toResponse(Comment comment){
 
@@ -33,12 +54,4 @@ public class CommentService {
 
         return response;
     }
-
-
-
-
-
-
-
 }
-

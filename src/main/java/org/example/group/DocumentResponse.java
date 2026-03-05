@@ -18,6 +18,7 @@ import java.time.LocalDateTime;
         private Long fileSize;
         private Integer pageCount;
         private String summary;
+        private String processingStatus;
         private String uploadedByName;
         private String uploadedByEmail;
         private LocalDateTime uploadedAt;

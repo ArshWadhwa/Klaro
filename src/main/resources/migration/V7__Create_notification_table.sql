@@ -1,4 +1,4 @@
--- Create notification table
+ -- Create notification table
 CREATE TABLE notification (
     id BIGSERIAL PRIMARY KEY,
     recipient VARCHAR(255) NOT NULL,
