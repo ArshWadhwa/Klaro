@@ -14,6 +14,7 @@ import org.example.repository.UserRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
@@ -57,6 +58,21 @@ public class DocumentService {
 
     @Autowired
     private ProjectRepository projectRepository;
+
+    @Autowired
+    @Lazy
+    private DocumentService self;
+
+    /**
+     * PostgreSQL text/varchar cannot store NUL (\u0000) bytes.
+     * PDF extraction can occasionally introduce them, so strip before persistence.
+     */
+    private String sanitizeForPostgres(String value) {
+        if (value == null) {
+            return null;
+        }
+        return value.replace("\u0000", "");
+    }
 
     private DocumentResponse toDocumentResponse(Document document) {
 
@@ -120,7 +136,8 @@ public class DocumentService {
     // Generic upload (without project)
     @Transactional
     public DocumentResponse uploadDocument(MultipartFile file, String userEmail) throws IOException {
-        Document saved = saveDocumentRecord(file, userEmail, null);
+        // Call through proxy so REQUIRES_NEW on saveDocumentRecord is actually applied.
+        Document saved = self.saveDocumentRecord(file, userEmail, null);
         triggerRAG(saved);
         return toDocumentResponse(saved);
     }
@@ -130,7 +147,8 @@ public class DocumentService {
     public DocumentResponse uploadDocumentToProject(MultipartFile file, String userEmail, Long projectId) throws IOException {
         Project project = projectRepository.findById(projectId)
             .orElseThrow(() -> new RuntimeException("Project not found"));
-        Document saved = saveDocumentRecord(file, userEmail, project);
+        // Call through proxy so REQUIRES_NEW on saveDocumentRecord is actually applied.
+        Document saved = self.saveDocumentRecord(file, userEmail, project);
         triggerRAG(saved);
         return toDocumentResponse(saved);
     }
@@ -147,17 +165,17 @@ public class DocumentService {
         Map<String, Object> uploadResult = cloudinaryService.uploadPDF(file);
 
         Document document = new Document();
-        document.setFileName(file.getOriginalFilename());
-        document.setFileUrl((String) uploadResult.get("secure_url"));
-        document.setPublicId((String) uploadResult.get("public_id"));
+        document.setFileName(sanitizeForPostgres(file.getOriginalFilename()));
+        document.setFileUrl(sanitizeForPostgres((String) uploadResult.get("secure_url")));
+        document.setPublicId(sanitizeForPostgres((String) uploadResult.get("public_id")));
         document.setFileSize(file.getSize());
         document.setUploadedBy(user);
         document.setProject(project);
         document.setUploadedAt(LocalDateTime.now());
 
-        String extractedText = pdfExtractionService.extractText(file);
+        String extractedText = sanitizeForPostgres(pdfExtractionService.extractText(file));
         document.setExtractedText(extractedText);
-        document.setAiSummary(pdfExtractionService.getSummary(extractedText));
+        document.setAiSummary(sanitizeForPostgres(pdfExtractionService.getSummary(extractedText)));
         document.setPageCount(pdfExtractionService.getPageCount(file));
         document.setProcessingStatus("PROCESSING");
 

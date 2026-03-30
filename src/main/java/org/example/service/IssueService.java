@@ -17,7 +17,6 @@ import org.example.security.TenantContext;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
-import static com.cloudinary.AccessControlRule.AccessType.token;
 
 @Service
 public class IssueService {

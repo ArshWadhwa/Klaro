@@ -27,9 +27,10 @@ public class RAGService {
 
     private static final Logger logger = LoggerFactory.getLogger(RAGService.class);
 
-    private static final int CHUNK_SIZE = 500;      // ~500 chars per chunk
+    private static final int CHUNK_SIZE = 500;       // ~500 chars per chunk
     private static final int CHUNK_OVERLAP = 100;    // 100 char overlap between chunks
-    private static final int TOP_K = 4;              // Return top 4 most relevant chunks
+    private static final int TOP_K_DEFAULT = 8;      // Default top chunks for normal Q&A
+    private static final int TOP_K_BROAD = 24;       // Broader retrieval for list/exhaustive queries
     private static final int BATCH_SIZE = 10;        // Batch size for HuggingFace API calls
 
     @Autowired
@@ -123,19 +124,20 @@ public class RAGService {
         boolean hasEmbeddings = allChunks.stream()
                 .anyMatch(c -> c.getEmbedding() != null && !c.getEmbedding().isBlank());
 
+        int topK = resolveTopK(userQuery, allChunks.size());
         List<String> topChunks;
 
         if (hasEmbeddings) {
             try {
-                topChunks = retrieveByEmbedding(allChunks, userQuery);
+                topChunks = retrieveByEmbedding(allChunks, userQuery, topK);
                 logger.info("Retrieved {} relevant chunks via embeddings for document {}", topChunks.size(), documentId);
             } catch (Exception e) {
                 // If embedding fails (HuggingFace down), fall back to keyword search
                 logger.warn("Embedding search failed, falling back to keyword search: {}", e.getMessage());
-                topChunks = retrieveByKeyword(allChunks, userQuery);
+                topChunks = retrieveByKeyword(allChunks, userQuery, topK);
             }
         } else {
-            topChunks = retrieveByKeyword(allChunks, userQuery);
+            topChunks = retrieveByKeyword(allChunks, userQuery, topK);
             logger.info("Retrieved {} relevant chunks via keyword fallback for document {}", topChunks.size(), documentId);
         }
 
@@ -146,7 +148,7 @@ public class RAGService {
     /**
      * Vector similarity search - core RAG retrieval.
      */
-    private List<String> retrieveByEmbedding(List<DocumentChunk> chunks, String query) {
+    private List<String> retrieveByEmbedding(List<DocumentChunk> chunks, String query, int topK) {
         // 1. Get query embedding
         float[] queryEmbedding = embeddingService.getEmbedding(query);
 
@@ -163,7 +165,7 @@ public class RAGService {
         // 3. Sort by similarity (highest first) and take top K
         return scored.stream()
                 .sorted((a, b) -> Double.compare(b.getValue(), a.getValue()))
-                .limit(TOP_K)
+                .limit(topK)
                 .map(entry -> entry.getKey().getChunkText())
                 .collect(Collectors.toList());
     }
@@ -171,7 +173,7 @@ public class RAGService {
     /**
      * Keyword-based fallback when embeddings are unavailable.
      */
-    private List<String> retrieveByKeyword(List<DocumentChunk> chunks, String query) {
+    private List<String> retrieveByKeyword(List<DocumentChunk> chunks, String query, int topK) {
         String queryLower = query.toLowerCase();
         String[] queryWords = queryLower.split("\\s+");
 
@@ -190,9 +192,23 @@ public class RAGService {
 
         return scored.stream()
                 .sorted((a, b) -> Integer.compare(b.getValue(), a.getValue()))
-                .limit(TOP_K)
+                .limit(topK)
                 .map(entry -> entry.getKey().getChunkText())
                 .collect(Collectors.toList());
+    }
+
+    private int resolveTopK(String query, int chunkCount) {
+        String q = query == null ? "" : query.toLowerCase(Locale.ROOT);
+        boolean broad = q.contains("all")
+                || q.contains("list")
+                || q.contains("every")
+                || q.contains("complete")
+                || q.contains("questions")
+                || q.contains("summarize")
+                || q.contains("summary");
+
+        int desired = broad ? TOP_K_BROAD : TOP_K_DEFAULT;
+        return Math.max(1, Math.min(desired, chunkCount));
     }
 //
     /**

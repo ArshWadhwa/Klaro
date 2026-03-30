@@ -23,6 +23,9 @@ public class OpenRouterAiService {
     @Value("${groq.api.key}")
     private String groqApiKey;
 
+    @Value("${ai.max-tokens:3072}")
+    private int maxTokens;
+
     private static final String GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions";
 
     // Groq free models — tried in order, first working one wins
@@ -65,7 +68,7 @@ public class OpenRouterAiService {
         ObjectNode root = mapper.createObjectNode();
         root.put("model", model);
         root.put("temperature", 0.7);
-        root.put("max_tokens", 1024);
+        root.put("max_tokens", maxTokens);
         root.put("stream", false);
 
         ArrayNode messages = mapper.createArrayNode();
