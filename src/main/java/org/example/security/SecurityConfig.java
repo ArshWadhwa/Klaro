@@ -44,6 +44,7 @@ public class SecurityConfig {
                         .requestMatchers("/notifications/**").authenticated()
                         .requestMatchers("/api/files/**").authenticated()
                         .requestMatchers("/ai/**").permitAll()
+                        .requestMatchers("/health").permitAll()  
                         .anyRequest().authenticated()
                 )
                 .formLogin(form -> form.disable())
