@@ -23,6 +23,8 @@ import java.io.IOException;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.stream.Collectors;
 
 @Service
@@ -30,6 +32,8 @@ import java.util.stream.Collectors;
 public class DocumentService {
 
     private static final Logger logger = LoggerFactory.getLogger(DocumentService.class);
+
+    private final ExecutorService executorService = Executors.newCachedThreadPool();
 
     @Autowired
     private CloudinaryService cloudinaryService;
@@ -166,28 +170,46 @@ public class DocumentService {
     }
 
     /**
-     * Trigger synchronous RAG processing for the document.
-     * Kafka has been disabled, so all processing is now synchronous.
+     * Trigger asynchronous RAG processing for the document.
      */
     private void publishDocumentEvent(Long documentId, String userEmail, String eventType) {
-        logger.info("🔄 Processing document {} (type: {})", documentId, eventType);
-        syncFallbackRAG(documentId);
+        logger.info("🔄 Submitting document {} for async processing (type: {})", documentId, eventType);
+        executorService.submit(() -> {
+            try {
+                self.processDocumentBackground(documentId);
+            } catch (Exception e) {
+                logger.error("❌ Async document processing thread failed for document {}", documentId, e);
+            }
+        });
     }
 
     /**
-     * Synchronous RAG fallback used when Kafka is unavailable.
-     * Preserves original behavior so document processing never silently fails.
+     * Asynchronous RAG processing execution.
+     * Generates AI summary and indexes chunks with embeddings.
      */
-    private void syncFallbackRAG(Long documentId) {
+    @Transactional
+    public void processDocumentBackground(Long documentId) {
         try {
+            // 1. Generate summary if not present
+            documentRepository.findById(documentId).ifPresent(doc -> {
+                if (doc.getAiSummary() == null || doc.getAiSummary().isBlank()) {
+                    logger.info("🤖 Generating AI summary for document {} in the background...", documentId);
+                    String aiSummary = generateAiSummaryOfDocument(doc.getExtractedText(), doc.getFileName());
+                    doc.setAiSummary(sanitizeForPostgres(aiSummary));
+                    documentRepository.save(doc);
+                }
+            });
+
+            // 2. Run RAG indexing
             ragService.processDocumentForRAGById(documentId);
+
             documentRepository.findById(documentId).ifPresent(doc -> {
                 doc.setProcessingStatus("COMPLETED");
                 documentRepository.save(doc);
             });
-            logger.info("✅ Sync RAG fallback complete for document {}", documentId);
+            logger.info("✅ Async RAG processing complete for document {}", documentId);
         } catch (Exception e) {
-            logger.error("❌ Sync RAG fallback failed for document {}: {}", documentId, e.getMessage(), e);
+            logger.error("❌ Async RAG processing failed for document {}: {}", documentId, e.getMessage(), e);
             documentRepository.findById(documentId).ifPresent(doc -> {
                 doc.setProcessingStatus("FAILED");
                 documentRepository.save(doc);
@@ -240,14 +262,12 @@ public class DocumentService {
 
         String extractedText = sanitizeForPostgres(pdfExtractionService.extractText(file));
         document.setExtractedText(extractedText);
-        // Generate a real, high-quality AI summary
-        String aiSummary = generateAiSummaryOfDocument(extractedText, file.getOriginalFilename());
-        document.setAiSummary(sanitizeForPostgres(aiSummary));
+        document.setAiSummary(null); // Will be generated in the background thread
         document.setPageCount(pdfExtractionService.getPageCount(file));
         document.setProcessingStatus("PROCESSING");
 
         Document saved = documentRepository.save(document);
-        logger.info("✅ Document {} saved ({} chars extracted). Kafka event will trigger RAG async.", saved.getId(), extractedText.length());
+        logger.info("✅ Document {} saved ({} chars extracted). Background thread will generate summary and index RAG.", saved.getId(), extractedText.length());
         return saved;
     }
 
