@@ -44,6 +44,7 @@ public class SecurityConfig {
                         .requestMatchers("/api/files/**").authenticated()
                         .requestMatchers("/ai/**").permitAll()
                         .requestMatchers("/health").permitAll()
+                        .requestMatchers("/documents/test-embedding").permitAll()
                         .anyRequest().authenticated())
                 .formLogin(form -> form.disable())
                 .httpBasic(httpBasic -> httpBasic.disable())
