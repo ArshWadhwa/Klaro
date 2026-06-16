@@ -55,7 +55,6 @@ public class DocumentService {
     @Autowired
     private RAGService ragService;
 
-
     @Autowired
     private ProjectRepository projectRepository;
 
@@ -136,26 +135,92 @@ public class DocumentService {
     // Generic upload (without project)
     @Transactional
     public DocumentResponse uploadDocument(MultipartFile file, String userEmail) throws IOException {
-        // Call through proxy so REQUIRES_NEW on saveDocumentRecord is actually applied.
         Document saved = self.saveDocumentRecord(file, userEmail, null);
-        triggerRAG(saved);
+        publishDocumentEvent(saved.getId(), userEmail, "UPLOADED");
         return toDocumentResponse(saved);
     }
 
-    // Upload document to a project (classic synchronous)
+    // Upload document to a project
     @Transactional
     public DocumentResponse uploadDocumentToProject(MultipartFile file, String userEmail, Long projectId) throws IOException {
         Project project = projectRepository.findById(projectId)
             .orElseThrow(() -> new RuntimeException("Project not found"));
-        // Call through proxy so REQUIRES_NEW on saveDocumentRecord is actually applied.
         Document saved = self.saveDocumentRecord(file, userEmail, project);
-        triggerRAG(saved);
+        publishDocumentEvent(saved.getId(), userEmail, "UPLOADED");
         return toDocumentResponse(saved);
     }
 
     /**
-     * Step 1: Save document metadata + extracted text to DB.
-     * This transaction commits BEFORE RAG runs, so RAG can reload a fresh entity.
+     * Trigger re-processing of an existing document's RAG index.
+     * Useful after changing chunk parameters or recovering from a FAILED state.
+     */
+    @Transactional
+    public DocumentResponse reprocessDocument(Long documentId, String userEmail) {
+        Document document = documentRepository.findById(documentId)
+                .orElseThrow(() -> new RuntimeException("Document not found"));
+        document.setProcessingStatus("PROCESSING");
+        documentRepository.save(document);
+        publishDocumentEvent(documentId, userEmail, "REPROCESS");
+        logger.info("🔄 Reprocess event published for document {}", documentId);
+        return toDocumentResponse(document);
+    }
+
+    /**
+     * Trigger synchronous RAG processing for the document.
+     * Kafka has been disabled, so all processing is now synchronous.
+     */
+    private void publishDocumentEvent(Long documentId, String userEmail, String eventType) {
+        logger.info("🔄 Processing document {} (type: {})", documentId, eventType);
+        syncFallbackRAG(documentId);
+    }
+
+    /**
+     * Synchronous RAG fallback used when Kafka is unavailable.
+     * Preserves original behavior so document processing never silently fails.
+     */
+    private void syncFallbackRAG(Long documentId) {
+        try {
+            ragService.processDocumentForRAGById(documentId);
+            documentRepository.findById(documentId).ifPresent(doc -> {
+                doc.setProcessingStatus("COMPLETED");
+                documentRepository.save(doc);
+            });
+            logger.info("✅ Sync RAG fallback complete for document {}", documentId);
+        } catch (Exception e) {
+            logger.error("❌ Sync RAG fallback failed for document {}: {}", documentId, e.getMessage(), e);
+            documentRepository.findById(documentId).ifPresent(doc -> {
+                doc.setProcessingStatus("FAILED");
+                documentRepository.save(doc);
+            });
+        }
+    }
+
+    private String generateAiSummaryOfDocument(String extractedText, String fileName) {
+        try {
+            // Keep the text size reasonable for the summary prompt, e.g. first 40,000 chars
+            String truncated = extractedText.length() > 40000 
+                    ? extractedText.substring(0, 40000) + "\n...[truncated for summary]" 
+                    : extractedText;
+            
+            String prompt = String.format(
+                    "Analyze the following document text (from file '%s') and generate a high-quality summary.\n" +
+                    "Include: the main topics covered, the overall structure of the document, the total estimated number of questions or sections (if it contains questions/practice sets), and key details.\n\n" +
+                    "=== DOCUMENT TEXT ===\n%s\n=== END DOCUMENT TEXT ===",
+                    fileName, truncated
+            );
+            
+            org.example.group.AIRequest request = new org.example.group.AIRequest(prompt);
+            org.example.group.AIResponse response = openRouterAiService.generateContent(request);
+            return response.getAiSuggestion();
+        } catch (Exception e) {
+            logger.warn("Could not generate AI summary for doc: {}. Falling back to default summary. Error: {}", fileName, e.getMessage());
+            return pdfExtractionService.getSummary(extractedText); // fallback to first 500 chars
+        }
+    }
+
+    /**
+     * Save document metadata + extracted text to DB.
+     * This transaction commits BEFORE RAG runs (called via self proxy).
      */
     @Transactional(propagation = org.springframework.transaction.annotation.Propagation.REQUIRES_NEW)
     public Document saveDocumentRecord(MultipartFile file, String userEmail, Project project) throws IOException {
@@ -175,35 +240,15 @@ public class DocumentService {
 
         String extractedText = sanitizeForPostgres(pdfExtractionService.extractText(file));
         document.setExtractedText(extractedText);
-        document.setAiSummary(sanitizeForPostgres(pdfExtractionService.getSummary(extractedText)));
+        // Generate a real, high-quality AI summary
+        String aiSummary = generateAiSummaryOfDocument(extractedText, file.getOriginalFilename());
+        document.setAiSummary(sanitizeForPostgres(aiSummary));
         document.setPageCount(pdfExtractionService.getPageCount(file));
         document.setProcessingStatus("PROCESSING");
 
         Document saved = documentRepository.save(document);
-        logger.info("✅ Document {} saved ({}chars extracted). Starting RAG...", saved.getId(), extractedText.length());
+        logger.info("✅ Document {} saved ({} chars extracted). Kafka event will trigger RAG async.", saved.getId(), extractedText.length());
         return saved;
-    }
-
-    /**
-     * Step 2: Trigger RAG chunking. Document is already committed in DB.
-     * Called after saveDocumentRecord completes its own transaction.
-     */
-    private void triggerRAG(Document saved) {
-        try {
-            ragService.processDocumentForRAG(saved);
-            // Update status to COMPLETED inside RAG's own transaction
-            documentRepository.findById(saved.getId()).ifPresent(doc -> {
-                doc.setProcessingStatus("COMPLETED");
-                documentRepository.save(doc);
-            });
-            logger.info("✅ RAG complete for document {}", saved.getId());
-        } catch (Exception e) {
-            logger.error("❌ RAG failed for document {}: {}", saved.getId(), e.getMessage(), e);
-            documentRepository.findById(saved.getId()).ifPresent(doc -> {
-                doc.setProcessingStatus("FAILED");
-                documentRepository.save(doc);
-            });
-        }
     }
 
 // Add this method to get documents for a specific project
@@ -255,6 +300,43 @@ public List<DocumentResponse> getProjectDocuments(Long projectId, String userEma
         logger.info("✅ Document {} deleted successfully", documentId);
     }
 
+    private String getSystemPromptForIntent(QueryIntent intent) {
+        switch (intent) {
+            case EXHAUSTIVE_EXTRACTION:
+                return "You are an expert exam preparation assistant and document analyst with perfect recall.\n" +
+                       "Your goal is to extract EVERY piece of specific information matching the user's request: all numeric values, all frequency bands (GHz/MHz/KHz), all definitions, all lists, all tables, all protocols with their specs, and all comparisons.\n" +
+                       "Be completely exhaustive — missing a single value is unacceptable. Format numeric data in clean markdown tables.\n" +
+                       "Every fact, value, or frequency you extract MUST be accompanied by its source citation pointing to the page number where it was found (e.g. \"[Page X]\" or \"(Page X)\") based on the block headers.";
+            case SUMMARY:
+                return "You are a summarization assistant.\n" +
+                       "Create a structured, clear, and comprehensive summary of the provided document content.\n" +
+                       "Organize the summary into logical sections (e.g. main concepts, architecture, technical specifications, and key takeaways) using Markdown headers, bullet points, and tables.\n" +
+                       "Cite the key pages (e.g. \"[Page X]\") when summarizing specific sections based on the block headers.";
+            case FLASHCARD_GENERATION:
+                return "You are a study aid generator.\n" +
+                       "Generate a set of clear, high-quality question-and-answer study flashcards based on the provided document context.\n" +
+                       "Each flashcard should test an important concept, term, definition, or numeric specification.\n" +
+                       "Format the output as a clean Markdown list of \"Front (Question): ...\" and \"Back (Answer): ...\".\n" +
+                       "Include page citations (e.g. \"[Page X]\") on the back of each card to reference the source based on the block headers.";
+            case MCQ_GENERATION:
+                return "You are an exam generator.\n" +
+                       "Create a set of multiple-choice questions (MCQs) based on the provided document context to test the user's knowledge.\n" +
+                       "Each question must have exactly 4 options (A, B, C, D) and a clear, correct answer key with a brief explanation.\n" +
+                       "Include page citations (e.g. \"[Page X]\") in the explanation to point to the source content based on the block headers.";
+            case COMPARISON:
+                return "You are an analytical assistant.\n" +
+                       "Compare and contrast the technologies, protocols, or concepts requested by the user based on the provided document context.\n" +
+                       "Create a structured comparison, highlighting key differences, advantages, disadvantages, and specifications. Use a Markdown table for side-by-side specification comparisons wherever possible.\n" +
+                       "Include page citations (e.g. \"[Page X]\") for every claim you make based on the block headers.";
+            case FACT_LOOKUP:
+            default:
+                return "You are a precise fact-lookup assistant.\n" +
+                       "Answer the user's question using ONLY the provided document context. Do not make assumptions or extrapolate.\n" +
+                       "If the answer is not in the provided excerpts, say so honestly.\n" +
+                       "You MUST cite the page numbers of the source context blocks (e.g. \"[Page X]\") for every fact you state based on the block headers.";
+        }
+    }
+
     /**
      * Chat with document using OpenRouter AI
      */
@@ -274,7 +356,7 @@ public List<DocumentResponse> getProjectDocuments(Long projectId, String userEma
         ChatMessage userChatMessage = new ChatMessage();
         userChatMessage.setDocument(document);
         userChatMessage.setRole("user");
-userChatMessage.setSenderEmail(userEmail);
+        userChatMessage.setSenderEmail(userEmail);
         userChatMessage.setSenderName(user.getFullName());
         userChatMessage.setContent(userMessage);
         userChatMessage.setCreatedAt(LocalDateTime.now());
@@ -304,12 +386,18 @@ userChatMessage.setSenderEmail(userEmail);
 
             // 🎯 RAG: Retrieve only relevant chunks instead of full document
             String relevantContext = ragService.getRelevantContext(documentId, userMessage);
+            QueryIntent intent = ragService.detectIntent(userMessage);
 
             // Build context
             StringBuilder contextBuilder = new StringBuilder();
-            contextBuilder.append("You are an AI assistant helping users understand a PDF document.\n");
-            contextBuilder.append("Answer the user's question based ONLY on the relevant document excerpts below.\n");
-            contextBuilder.append("If the answer is not in the provided excerpts, say so honestly.\n\n");
+            contextBuilder.append("You are answering questions based on the provided document context.\n");
+            
+            // Inject document summary if available to give high-level catalog knowledge
+            if (document.getAiSummary() != null && !document.getAiSummary().isBlank()) {
+                contextBuilder.append("=== DOCUMENT SUMMARY ===\n");
+                contextBuilder.append(document.getAiSummary()).append("\n");
+                contextBuilder.append("=== END SUMMARY ===\n\n");
+            }
 
             if (relevantContext != null && !relevantContext.isBlank()) {
                 // ✅ RAG chunks available — use them (efficient, accurate)
@@ -318,18 +406,18 @@ userChatMessage.setSenderEmail(userEmail);
                 contextBuilder.append("\n=== END EXCERPTS ===\n\n");
                 logger.info("📚 Using RAG context ({} chars) for document {}", relevantContext.length(), documentId);
             } else {
-                // ⚠️ No chunks yet — use first 3000 chars of full text as fallback
+                // ⚠️ No chunks yet — use up to 20000 chars of full text as fallback
                 String fullText = document.getExtractedText();
-                String truncated = fullText.length() > 3000 ? fullText.substring(0, 3000) + "\n...[truncated]" : fullText;
+                String truncated = fullText.length() > 20000 ? fullText.substring(0, 20000) + "\n...[truncated — document is still being indexed]" : fullText;
                 contextBuilder.append("=== DOCUMENT CONTENT (partial) ===\n");
                 contextBuilder.append(truncated);
                 contextBuilder.append("\n=== END CONTENT ===\n\n");
-                logger.warn("⚠️ No RAG chunks for document {} — using truncated full text fallback", documentId);
+                logger.warn("⚠️ No RAG chunks for document {} — using up-to-20000 char fallback", documentId);
             }
 
-            // Add recent conversation history (last 4 messages only)
+            // Add recent conversation history (last 8 messages for better continuity)
             List<ChatMessage> history = chatMessageRepository.findByDocumentOrderByCreatedAtAsc(document);
-            int historyStart = Math.max(0, history.size() - 4);
+            int historyStart = Math.max(0, history.size() - 8);
             if (historyStart < history.size() - 1) { // skip if only the current message
                 contextBuilder.append("Recent conversation:\n");
                 for (int i = historyStart; i < history.size() - 1; i++) {
@@ -344,9 +432,8 @@ userChatMessage.setSenderEmail(userEmail);
             // Call AI
             String aiResponse;
             try {
-                org.example.group.AIRequest aiRequest = new org.example.group.AIRequest();
-                aiRequest.setIssueDescription(contextBuilder.toString());
-                org.example.group.AIResponse response = openRouterAiService.generateContent(aiRequest);
+                String systemPrompt = getSystemPromptForIntent(intent);
+                org.example.group.AIResponse response = openRouterAiService.generateContent(contextBuilder.toString(), systemPrompt);
                 aiResponse = response.getAiSuggestion();
             } catch (Exception e) {
                 aiResponse = "Sorry, AI service unavailable. Error: " + e.getMessage();

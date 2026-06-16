@@ -1,6 +1,5 @@
 package org.example.controller;
 
-
 import org.example.group.SigninRequest;
 import org.example.group.SigninResponse;
 import org.example.group.SignupRequest;
@@ -14,8 +13,6 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
-
-
 
 @RestController
 @CrossOrigin(origins = {
@@ -32,10 +29,8 @@ public class AuthController {
     @Autowired
     private AuthService authService;
 
-
-
     @PostMapping("/signup")
-    public ResponseEntity<String> signUp(@Valid @RequestBody SignupRequest signupRequest){
+    public ResponseEntity<String> signUp(@Valid @RequestBody SignupRequest signupRequest) {
         try {
             String result = authService.register(signupRequest);
             System.out.println("Register result: " + result);
@@ -46,7 +41,7 @@ public class AuthController {
     }
 
     @PostMapping("/signin")
-    public ResponseEntity<?> signin(@Valid @RequestBody SigninRequest request){
+    public ResponseEntity<?> signin(@Valid @RequestBody SigninRequest request) {
         try {
             SigninResponse response = authService.login(request);
             return ResponseEntity.ok(response);
@@ -81,7 +76,8 @@ public class AuthController {
     }
 
     @GetMapping("/user")
-    public ResponseEntity<UserInfoResponse> getUserEmail(@RequestHeader(value = "Authorization", required = false) String token) {
+    public ResponseEntity<UserInfoResponse> getUserEmail(
+            @RequestHeader(value = "Authorization", required = false) String token) {
         System.out.println("Received Authorization header in /auth/user: " + token);
         if (token != null && token.startsWith("Bearer ")) {
 
@@ -92,7 +88,7 @@ public class AuthController {
             System.out.println("Fetched fullName in controller: " + fullName); // Log fullName
             String role = authService.getRoleFromToken(token); // Fetch role from token
             System.out.println("Fetched role in controller: " + role); // Log role
-            UserInfoResponse response = new UserInfoResponse(null,email, fullName, role);
+            UserInfoResponse response = new UserInfoResponse(null, email, fullName, role);
             System.out.println("Response object: " + response); // Log response
             return ResponseEntity.ok(response);
 

@@ -1,6 +1,5 @@
 package org.example.security;
 
-
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -44,9 +43,8 @@ public class SecurityConfig {
                         .requestMatchers("/notifications/**").authenticated()
                         .requestMatchers("/api/files/**").authenticated()
                         .requestMatchers("/ai/**").permitAll()
-                        .requestMatchers("/health").permitAll()  
-                        .anyRequest().authenticated()
-                )
+                        .requestMatchers("/health").permitAll()
+                        .anyRequest().authenticated())
                 .formLogin(form -> form.disable())
                 .httpBasic(httpBasic -> httpBasic.disable())
                 .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)
@@ -58,9 +56,15 @@ public class SecurityConfig {
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
-        configuration.setAllowedOrigins(Arrays.asList("http://localhost:8080","http://localhost:3000","http://localhost:3001","https://45d5-2405-201-5803-9887-ec33-f5d-bb3d-9d69.ngrok-free.app")); // Update frontend URL
-        configuration.setAllowedMethods(Arrays.asList("GET", "POST", "PUT","PATCH", "DELETE", "OPTIONS")); // Allow all necessary methods
-        configuration.setAllowedHeaders(Arrays.asList("Authorization", "Content-Type", "X-Organization-Id", "X-Requested-With", "Accept", "Origin")); // Allow required headers
+        configuration.setAllowedOrigins(Arrays.asList("http://localhost:8080", "http://localhost:3000",
+                "http://localhost:3001", "https://45d5-2405-201-5803-9887-ec33-f5d-bb3d-9d69.ngrok-free.app")); // Update
+                                                                                                                // frontend
+                                                                                                                // URL
+        configuration.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS")); // Allow all
+                                                                                                            // necessary
+                                                                                                            // methods
+        configuration.setAllowedHeaders(Arrays.asList("Authorization", "Content-Type", "X-Organization-Id",
+                "X-Requested-With", "Accept", "Origin")); // Allow required headers
         configuration.setAllowCredentials(true); // Enable credentials
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
         source.registerCorsConfiguration("/**", configuration); // Apply CORS to all endpoints

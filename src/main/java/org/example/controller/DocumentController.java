@@ -44,6 +44,9 @@ public class DocumentController {
     @Autowired
     private DocumentRepository documentRepository;
 
+    @Autowired
+    private org.example.service.RAGEvaluationService ragEvaluationService;
+
     /**
      * ======================================
      * Upload document (Synchronous)
@@ -56,24 +59,51 @@ public class DocumentController {
             @RequestHeader("Authorization") String authHeader
     ) {
         try {
-            // 🔐 Extract user
             String token = authHeader.substring(7);
             String userEmail = authService.getEmailFromToken(token);
 
-            // Synchronous processing: upload, extract, chunk, embed
             DocumentResponse response =
                     documentService.uploadDocumentToProject(file, userEmail, projectId);
 
             return ResponseEntity.ok(
                     Map.of(
                             "documentId", response.getId(),
-                            "status", "COMPLETED",
-                            "message", "Document uploaded and processed successfully"
+                            "status", "PROCESSING",
+                            "message", "Document uploaded! RAG indexing is running in the background. Poll /documents/{id}/status for updates."
                     )
             );
 
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body(new org.example.group.ErrorResponse(e.getMessage()));
+        }
+    }
+
+    /**
+     * Re-trigger RAG indexing for a document (e.g., after FAILED status).
+     * Publishes to document.reprocess Kafka topic — returns immediately.
+     */
+    @PostMapping("/{documentId}/reprocess")
+    public ResponseEntity<?> reprocessDocument(
+            @PathVariable Long documentId,
+            @RequestHeader("Authorization") String authHeader
+    ) {
+        try {
+            String token = authHeader.substring(7);
+            String userEmail = authService.getEmailFromToken(token);
+
+            DocumentResponse response = documentService.reprocessDocument(documentId, userEmail);
+
+            return ResponseEntity.ok(
+                    Map.of(
+                            "documentId", documentId,
+                            "status", "PROCESSING",
+                            "message", "Reprocessing triggered. Poll /documents/" + documentId + "/status for updates."
+                    )
+            );
+
+        } catch (Exception e) {
+            return ResponseEntity.badRequest()
                     .body(new org.example.group.ErrorResponse(e.getMessage()));
         }
     }
@@ -259,6 +289,29 @@ public class DocumentController {
                     "error", e.getMessage(),
                     "hint", "Check your HuggingFace API key or wait 2-3 minutes for model to load"
                 ));
+        }
+    }
+
+    /**
+     * 🧪 Run RAG evaluation suite against the document
+     */
+    @GetMapping("/{documentId}/eval")
+    public ResponseEntity<?> evaluateDocumentRAG(
+            @PathVariable Long documentId,
+            @RequestHeader("Authorization") String authHeader
+    ) {
+        try {
+            String token = authHeader.substring(7);
+            String userEmail = authService.getEmailFromToken(token);
+
+            org.example.service.RAGEvaluationService.EvalReport report =
+                    ragEvaluationService.evaluateDocumentRAG(documentId, userEmail);
+
+            return ResponseEntity.ok(report);
+
+        } catch (Exception e) {
+            return ResponseEntity.badRequest()
+                    .body(new org.example.group.ErrorResponse(e.getMessage()));
         }
     }
 }

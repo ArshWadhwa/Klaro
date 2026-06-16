@@ -1,6 +1,5 @@
 package org.example.service;
 
-
 import org.apache.pdfbox.Loader;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.text.PDFTextStripper;
@@ -15,7 +14,15 @@ public class PDFExtractionService {
     public String extractText(MultipartFile file) throws IOException {
         try (PDDocument document = Loader.loadPDF(file.getBytes())) {
             PDFTextStripper stripper = new PDFTextStripper();
-            return stripper.getText(document);
+            StringBuilder sb = new StringBuilder();
+            int pageCount = document.getNumberOfPages();
+            for (int i = 1; i <= pageCount; i++) {
+                stripper.setStartPage(i);
+                stripper.setEndPage(i);
+                String pageText = stripper.getText(document);
+                sb.append("[Page ").append(i).append("]\n").append(pageText).append("\n");
+            }
+            return sb.toString();
         }
     }
 
@@ -31,9 +38,6 @@ public class PDFExtractionService {
                 ? extractedText.substring(0, maxLength) + "..."
                 : extractedText;
     }
-
-
-
 
     public int getPageCount(MultipartFile file) throws IOException {
         try (PDDocument document = Loader.loadPDF(file.getBytes())) {

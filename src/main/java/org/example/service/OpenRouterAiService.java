@@ -30,10 +30,8 @@ public class OpenRouterAiService {
 
     // Groq free models — tried in order, first working one wins
     private static final String[] GROQ_MODELS = {
-        "llama-3.3-70b-versatile",
-        "llama3-8b-8192",
-        "mixtral-8x7b-32768",
-        "gemma2-9b-it"
+            "meta-llama/llama-4-scout-17b-16e-instruct",
+
     };
 
     private final OkHttpClient client = new OkHttpClient.Builder()
@@ -45,12 +43,17 @@ public class OpenRouterAiService {
     private final ObjectMapper mapper = new ObjectMapper();
 
     public AIResponse generateContent(AIRequest request) {
+        return generateContent(request.getIssueDescription(),
+                "You are a helpful AI assistant. Answer questions based on the provided document context concisely and accurately.");
+    }
+
+    public AIResponse generateContent(String userContent, String systemPrompt) {
         Exception lastException = null;
 
         for (String model : GROQ_MODELS) {
             try {
                 logger.info("🤖 Trying Groq model: {}", model);
-                String result = callGroq(model, request.getIssueDescription());
+                String result = callGroq(model, userContent, systemPrompt);
                 logger.info("✅ AI response received from Groq model: {}", model);
                 return new AIResponse(result);
             } catch (Exception e) {
@@ -65,9 +68,22 @@ public class OpenRouterAiService {
     }
 
     private String callGroq(String model, String userContent) throws IOException {
+        return callGroq(model, userContent,
+                "You are a helpful AI assistant. Answer questions based on the provided document context concisely and accurately.");
+    }
+
+    private String callGroq(String model, String userContent, String systemPrompt) throws IOException {
         ObjectNode root = mapper.createObjectNode();
         root.put("model", model);
-        root.put("temperature", 0.7);
+
+        // Lower temperature from 0.7 to 0.2 for factual extraction/lookup queries (less
+        // creativity, more accuracy)
+        double temp = 0.7;
+        if (systemPrompt.contains("exhaustive") || systemPrompt.contains("perfect recall")
+                || systemPrompt.contains("precise fact-lookup")) {
+            temp = 0.2;
+        }
+        root.put("temperature", temp);
         root.put("max_tokens", maxTokens);
         root.put("stream", false);
 
@@ -75,7 +91,7 @@ public class OpenRouterAiService {
 
         ObjectNode system = mapper.createObjectNode();
         system.put("role", "system");
-        system.put("content", "You are a helpful AI assistant. Answer questions based on the provided document context concisely and accurately.");
+        system.put("content", systemPrompt);
         messages.add(system);
 
         ObjectNode user = mapper.createObjectNode();
@@ -87,8 +103,7 @@ public class OpenRouterAiService {
 
         RequestBody body = RequestBody.create(
                 mapper.writeValueAsString(root),
-                MediaType.get("application/json; charset=utf-8")
-        );
+                MediaType.get("application/json; charset=utf-8"));
 
         Request httpRequest = new Request.Builder()
                 .url(GROQ_API_URL)

@@ -1,3 +1,13 @@
+buildscript {
+    repositories {
+        mavenCentral()
+    }
+    dependencies {
+        classpath 'org.postgresql:postgresql:42.7.2'
+        classpath 'org.flywaydb:flyway-database-postgresql:10.15.2'
+    }
+}
+
 plugins {
     id 'java'
     id "org.flywaydb.flyway" version "10.15.2"
@@ -6,18 +16,34 @@ plugins {
     id 'application'
 }
 
-String dbName = System.getenv("DB_NAME") != null ? System.getenv("DB_NAME") : "klaro";
-String username = System.getenv("DB_USER") != null ? System.getenv("DB_USER") : "postgres";
-String password = System.getenv("DB_PASSWORD") != null ? System.getenv("DB_PASSWORD") : "postgres";
-String sslMode = System.getenv("DB_SSL_MODE") != null ? System.getenv("DB_SSL_MODE") : "prefer";
-String jdbcUrl = "jdbc:postgresql://localhost:5432/" + dbName + "?sslmode=" + sslMode;
+Properties props = new Properties()
+File propsFile = new File("${project.projectDir}/src/main/resources/application.properties")
+if (propsFile.exists()) {
+    propsFile.withInputStream { props.load(it) }
+}
+
+def resolvePlaceholder = { String value ->
+    if (value != null && value.startsWith('${') && value.endsWith('}')) {
+        int colonIdx = value.indexOf(':')
+        if (colonIdx != -1) {
+            String envVar = value.substring(2, colonIdx)
+            String defaultValue = value.substring(colonIdx + 1, value.length() - 1)
+            return System.getenv(envVar) != null ? System.getenv(envVar) : defaultValue
+        }
+    }
+    return value
+}
+
+String jdbcUrl = System.getenv("SPRING_DATASOURCE_URL") ?: resolvePlaceholder(props.getProperty("spring.datasource.url")) ?: "jdbc:postgresql://localhost:5432/klaro?sslmode=prefer"
+String username = System.getenv("SPRING_DATASOURCE_USERNAME") ?: resolvePlaceholder(props.getProperty("spring.datasource.username")) ?: "postgres"
+String dbPassword = System.getenv("SPRING_DATASOURCE_PASSWORD") ?: resolvePlaceholder(props.getProperty("spring.datasource.password")) ?: "postgres"
 
 group = 'org.example'
 version = '1.0-SNAPSHOT'
 
 java {
     toolchain {
-        languageVersion = JavaLanguageVersion.of(21)
+        languageVersion = JavaLanguageVersion.of(20)
     }
 }
 
@@ -28,7 +54,7 @@ repositories {
 flyway {
     url = jdbcUrl
     user = username
-    password = password
+    password = dbPassword
     locations = ["filesystem:${project.projectDir}/src/main/resources/migration"]
     baselineVersion = "0"
     baselineOnMigrate = true
@@ -67,7 +93,7 @@ configurations {
 task migrateCollab(type: org.flywaydb.gradle.task.FlywayMigrateTask) {
     url = jdbcUrl
     user = username
-    password = password
+    password = dbPassword
     locations = ["filesystem:${project.projectDir}/src/main/resources/migration"]
     baselineVersion = "0"
     baselineOnMigrate = true
@@ -80,4 +106,5 @@ test {
 //To run the class name from command line using gradle run
 application {
     mainClass = 'org.example.Main'
+    applicationDefaultJvmArgs = ['-Xms512m', '-Xmx2g', '-XX:MaxMetaspaceSize=512m']
 }
