@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import okhttp3.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.io.IOException;
@@ -13,25 +14,20 @@ import java.util.List;
 import java.util.concurrent.TimeUnit;
 
 /**
- * Local embedding service using Ollama.
+ * Cloud embedding service using Hugging Face Inference API.
  *
  * Model:
- * nomic-embed-text
- *
- * Ollama must be running locally:
- * ollama serve
- *
- * Pull model first:
- * ollama pull nomic-embed-text
+ * sentence-transformers/all-mpnet-base-v2 (768 dimensions)
  */
 @Service
 public class EmbeddingService {
 
     private static final Logger logger = LoggerFactory.getLogger(EmbeddingService.class);
 
-    private static final String OLLAMA_URL = "http://localhost:11434/api/embeddings";
+    private static final String HF_API_URL = "https://router.huggingface.co/hf-inference/models/sentence-transformers/all-mpnet-base-v2/pipeline/feature-extraction";
 
-    private static final String MODEL_NAME = "nomic-embed-text";
+    @Value("${huggingface.api.key}")
+    private String hfApiKey;
 
     private final OkHttpClient client = new OkHttpClient.Builder()
             .connectTimeout(30, TimeUnit.SECONDS)
@@ -41,119 +37,166 @@ public class EmbeddingService {
     private final ObjectMapper mapper = new ObjectMapper();
 
     /**
-     * Warm up local embedding model.
+     * Warm up Hugging Face embedding model.
      */
     public void warmupModel() {
-        logger.info("🔥 Warming up Ollama embedding model...");
+        logger.info("🔥 Warming up Hugging Face embedding model...");
 
         try {
             float[] embedding = getEmbedding("warmup");
 
             logger.info(
-                    "✅ Ollama embedding model ready! Dimensions: {}",
+                    "✅ Hugging Face embedding model ready! Dimensions: {}",
                     embedding.length);
 
         } catch (Exception e) {
             logger.error(
-                    "❌ Failed to warmup Ollama model",
+                    "❌ Failed to warmup Hugging Face model",
                     e);
         }
     }
 
     /**
-     * Generate embedding for single text.
+     * Generate embedding for single text with automatic loading retry.
      */
     public float[] getEmbedding(String text) {
+        int maxRetries = 5;
+        int attempt = 0;
 
-        try {
+        while (attempt < maxRetries) {
+            try {
+                String requestJson = """
+                        {
+                          "inputs": %s
+                        }
+                        """.formatted(mapper.writeValueAsString(text));
 
-            String requestJson = """
-                    {
-                      "model": "%s",
-                      "prompt": %s
+                RequestBody body = RequestBody.create(
+                        requestJson,
+                        MediaType.get("application/json"));
+
+                Request request = new Request.Builder()
+                        .url(HF_API_URL)
+                        .header("Authorization", "Bearer " + hfApiKey)
+                        .post(body)
+                        .build();
+
+                try (Response response = client.newCall(request).execute()) {
+                    String responseBody = response.body() != null ? response.body().string() : "";
+
+                    if (!response.isSuccessful()) {
+                        JsonNode rootNode = mapper.readTree(responseBody);
+                        if (rootNode.has("error")) {
+                            String errorMsg = rootNode.get("error").asText();
+                            if (errorMsg.contains("loading")) {
+                                double estimatedTime = rootNode.has("estimated_time") ? rootNode.get("estimated_time").asDouble() : 5.0;
+                                logger.warn("⏳ Hugging Face model is loading. Retrying in {} seconds (Attempt {}/{})", estimatedTime, attempt + 1, maxRetries);
+                                attempt++;
+                                Thread.sleep((long) (estimatedTime * 1000));
+                                continue;
+                            }
+                        }
+                        logger.error("❌ Hugging Face API Error - Status: {}, Body: {}", response.code(), responseBody);
+                        throw new RuntimeException("Hugging Face API failed: " + responseBody);
                     }
-                    """.formatted(
-                    MODEL_NAME,
-                    mapper.writeValueAsString(text));
 
-            RequestBody body = RequestBody.create(
-                    requestJson,
-                    MediaType.get("application/json"));
-
-            Request request = new Request.Builder()
-                    .url(OLLAMA_URL)
-                    .post(body)
-                    .build();
-
-            try (Response response = client.newCall(request).execute()) {
-
-                if (!response.isSuccessful()) {
-
-                    String errorBody = response.body() != null
-                            ? response.body().string()
-                            : "No body";
-
-                    logger.error(
-                            "❌ Ollama API Error - Status: {}, Body: {}",
-                            response.code(),
-                            errorBody);
-
-                    throw new RuntimeException(
-                            "Ollama API failed: " + errorBody);
+                    JsonNode rootNode = mapper.readTree(responseBody);
+                    if (rootNode.isArray()) {
+                        float[] embedding = new float[rootNode.size()];
+                        for (int i = 0; i < rootNode.size(); i++) {
+                            embedding[i] = (float) rootNode.get(i).asDouble();
+                        }
+                        logger.debug("✅ Generated embedding with {} dimensions", embedding.length);
+                        return embedding;
+                    } else {
+                        throw new RuntimeException("Unexpected response format from Hugging Face: " + responseBody);
+                    }
                 }
-
-                String responseBody = response.body().string();
-
-                JsonNode rootNode = mapper.readTree(responseBody);
-
-                JsonNode embeddingNode = rootNode.get("embedding");
-
-                if (embeddingNode == null) {
-                    throw new RuntimeException(
-                            "No embedding returned from Ollama");
+            } catch (IOException | InterruptedException e) {
+                logger.error("❌ Failed to generate embedding", e);
+                if (e instanceof InterruptedException) {
+                    Thread.currentThread().interrupt();
                 }
-
-                float[] embedding = new float[embeddingNode.size()];
-
-                for (int i = 0; i < embeddingNode.size(); i++) {
-                    embedding[i] = (float) embeddingNode.get(i).asDouble();
-                }
-
-                logger.debug(
-                        "✅ Generated embedding with {} dimensions",
-                        embedding.length);
-
-                return embedding;
+                throw new RuntimeException("Embedding generation failed", e);
             }
-
-        } catch (IOException e) {
-
-            logger.error(
-                    "❌ Failed to generate embedding",
-                    e);
-
-            throw new RuntimeException(
-                    "Embedding generation failed",
-                    e);
         }
+        throw new RuntimeException("Hugging Face model failed to load after multiple retries");
     }
 
     /**
-     * Generate embeddings for multiple texts.
+     * Generate embeddings for multiple texts using HF batch inference.
      */
     public List<float[]> getEmbeddingsBatch(List<String> texts) {
-
-        List<float[]> embeddings = new ArrayList<>();
-
-        for (String text : texts) {
-            embeddings.add(getEmbedding(text));
+        if (texts == null || texts.isEmpty()) {
+            return new ArrayList<>();
         }
 
-        logger.info(
-                "✅ Generated {} embeddings",
-                embeddings.size());
+        int maxRetries = 5;
+        int attempt = 0;
 
-        return embeddings;
+        while (attempt < maxRetries) {
+            try {
+                String requestJson = """
+                        {
+                          "inputs": %s
+                        }
+                        """.formatted(mapper.writeValueAsString(texts));
+
+                RequestBody body = RequestBody.create(
+                        requestJson,
+                        MediaType.get("application/json"));
+
+                Request request = new Request.Builder()
+                        .url(HF_API_URL)
+                        .header("Authorization", "Bearer " + hfApiKey)
+                        .post(body)
+                        .build();
+
+                try (Response response = client.newCall(request).execute()) {
+                    String responseBody = response.body() != null ? response.body().string() : "";
+
+                    if (!response.isSuccessful()) {
+                        JsonNode rootNode = mapper.readTree(responseBody);
+                        if (rootNode.has("error")) {
+                            String errorMsg = rootNode.get("error").asText();
+                            if (errorMsg.contains("loading")) {
+                                double estimatedTime = rootNode.has("estimated_time") ? rootNode.get("estimated_time").asDouble() : 5.0;
+                                logger.warn("⏳ Hugging Face model is loading. Retrying in {} seconds (Attempt {}/{})", estimatedTime, attempt + 1, maxRetries);
+                                attempt++;
+                                Thread.sleep((long) (estimatedTime * 1000));
+                                continue;
+                            }
+                        }
+                        logger.error("❌ Hugging Face API Error - Status: {}, Body: {}", response.code(), responseBody);
+                        throw new RuntimeException("Hugging Face API failed: " + responseBody);
+                    }
+
+                    JsonNode rootNode = mapper.readTree(responseBody);
+                    if (rootNode.isArray()) {
+                        List<float[]> embeddings = new ArrayList<>();
+                        for (int i = 0; i < rootNode.size(); i++) {
+                            JsonNode item = rootNode.get(i);
+                            float[] embedding = new float[item.size()];
+                            for (int j = 0; j < item.size(); j++) {
+                                embedding[j] = (float) item.get(j).asDouble();
+                            }
+                            embeddings.add(embedding);
+                        }
+                        logger.info("✅ Generated {} embeddings", embeddings.size());
+                        return embeddings;
+                    } else {
+                        throw new RuntimeException("Unexpected response format from Hugging Face: " + responseBody);
+                    }
+                }
+            } catch (IOException | InterruptedException e) {
+                logger.error("❌ Failed to generate embeddings batch", e);
+                if (e instanceof InterruptedException) {
+                    Thread.currentThread().interrupt();
+                }
+                throw new RuntimeException("Embedding batch generation failed", e);
+            }
+        }
+        throw new RuntimeException("Hugging Face model failed to load after multiple retries");
     }
 
     /**
