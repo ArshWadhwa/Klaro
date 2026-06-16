@@ -24,7 +24,7 @@ public class EmbeddingService {
 
     private static final Logger logger = LoggerFactory.getLogger(EmbeddingService.class);
 
-    private static final String HF_API_URL = "https://router.huggingface.co/hf-inference/models/sentence-transformers/all-mpnet-base-v2/pipeline/feature-extraction";
+    private static final String HF_API_URL = "https://router.huggingface.co/hf-inference/models/mixedbread-ai/mxbai-embed-large-v1";
 
     @Value("${huggingface.api.key}")
     private String hfApiKey;
@@ -102,11 +102,12 @@ public class EmbeddingService {
 
                     JsonNode rootNode = mapper.readTree(responseBody);
                     if (rootNode.isArray()) {
-                        float[] embedding = new float[rootNode.size()];
-                        for (int i = 0; i < rootNode.size(); i++) {
+                        int dims = Math.min(rootNode.size(), 768);
+                        float[] embedding = new float[dims];
+                        for (int i = 0; i < dims; i++) {
                             embedding[i] = (float) rootNode.get(i).asDouble();
                         }
-                        logger.debug("✅ Generated embedding with {} dimensions", embedding.length);
+                        logger.debug("✅ Generated embedding with {} dimensions (truncated from {})", embedding.length, rootNode.size());
                         return embedding;
                     } else {
                         throw new RuntimeException("Unexpected response format from Hugging Face: " + responseBody);
@@ -176,13 +177,14 @@ public class EmbeddingService {
                         List<float[]> embeddings = new ArrayList<>();
                         for (int i = 0; i < rootNode.size(); i++) {
                             JsonNode item = rootNode.get(i);
-                            float[] embedding = new float[item.size()];
-                            for (int j = 0; j < item.size(); j++) {
+                            int dims = Math.min(item.size(), 768);
+                            float[] embedding = new float[dims];
+                            for (int j = 0; j < dims; j++) {
                                 embedding[j] = (float) item.get(j).asDouble();
                             }
                             embeddings.add(embedding);
                         }
-                        logger.info("✅ Generated {} embeddings", embeddings.size());
+                        logger.info("✅ Generated {} embeddings (truncated to 768 dimensions)", embeddings.size());
                         return embeddings;
                     } else {
                         throw new RuntimeException("Unexpected response format from Hugging Face: " + responseBody);

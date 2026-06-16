@@ -564,7 +564,7 @@ public class RAGService {
         // Build context blocks, keeping track of character count
         StringBuilder sb = new StringBuilder();
         int totalChars = 0;
-        int maxContextChars = 16000; // ~4000 tokens of context, plenty of room for Llama 3.3
+        int maxContextChars = 64000; // ~16000 tokens of context, easily supported by Llama 3.1 on Groq
 
         int blockNum = 1;
         for (List<Integer> group : groups) {

@@ -412,6 +412,13 @@ public List<DocumentResponse> getProjectDocuments(Long projectId, String userEma
             StringBuilder contextBuilder = new StringBuilder();
             contextBuilder.append("You are answering questions based on the provided document context.\n");
             
+            // Inject document metadata (filename, page count, size) so the AI can answer meta-questions
+            contextBuilder.append("=== DOCUMENT METADATA ===\n");
+            contextBuilder.append("File Name: ").append(document.getFileName()).append("\n");
+            contextBuilder.append("Total Pages: ").append(document.getPageCount()).append("\n");
+            contextBuilder.append("File Size: ").append(document.getFileSize()).append(" bytes\n");
+            contextBuilder.append("=== END METADATA ===\n\n");
+
             // Inject document summary if available to give high-level catalog knowledge
             if (document.getAiSummary() != null && !document.getAiSummary().isBlank()) {
                 contextBuilder.append("=== DOCUMENT SUMMARY ===\n");
