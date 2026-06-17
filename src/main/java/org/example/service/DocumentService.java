@@ -368,7 +368,6 @@ public class DocumentService {
     /**
      * Send message - handles both normal chat and AI chat
      */
-    @Transactional(propagation = org.springframework.transaction.annotation.Propagation.NOT_SUPPORTED)
     public ChatMessageResponse sendMessage(Long documentId, String userMessage, boolean aiMode, String userEmail) {
         // 1. Get document
         Document document = documentRepository.findById(documentId)
