@@ -49,6 +49,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                 requestURI.equals("/styles.css") ||
                 requestURI.equals("/script.js") ||
                 requestURI.equals("/") ||
+                requestURI.equals("/health") ||
                 requestURI.startsWith("/ai/");
 
         // For public endpoints, skip JWT processing entirely
