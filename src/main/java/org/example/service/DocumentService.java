@@ -124,7 +124,14 @@ public class DocumentService {
         Document document = documentRepository.findById(documentId)
                 .orElseThrow(()->new RuntimeException("Doc not found"));
 
-        if (!document.getUploadedBy().getEmail().equals(userEmail)) {
+        User user = userRepository.findByEmail(userEmail)
+                .orElseThrow(() -> new RuntimeException("User not found"));
+
+        boolean isUploader = document.getUploadedBy().getEmail().equals(userEmail);
+        boolean isAdmin = user.getRole() == org.example.entity.Role.ROLE_ADMIN;
+        boolean isProjectDoc = document.getProject() != null;
+
+        if (!isUploader && !isAdmin && !isProjectDoc) {
             throw new RuntimeException("Unauthorized");
         }
 
