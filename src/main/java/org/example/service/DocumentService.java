@@ -19,12 +19,11 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
+import org.springframework.scheduling.annotation.Async;
 import java.io.IOException;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.stream.Collectors;
 
 @Service
@@ -32,8 +31,6 @@ import java.util.stream.Collectors;
 public class DocumentService {
 
     private static final Logger logger = LoggerFactory.getLogger(DocumentService.class);
-
-    private final ExecutorService executorService = Executors.newCachedThreadPool();
 
     @Autowired
     private CloudinaryService cloudinaryService;
@@ -180,14 +177,8 @@ public class DocumentService {
      * Trigger asynchronous RAG processing for the document.
      */
     private void publishDocumentEvent(Long documentId, String userEmail, String eventType) {
-        logger.info("🔄 Submitting document {} for async processing (type: {})", documentId, eventType);
-        executorService.submit(() -> {
-            try {
-                self.processDocumentBackground(documentId);
-            } catch (Exception e) {
-                logger.error("❌ Async document processing thread failed for document {}", documentId, e);
-            }
-        });
+        logger.info("🔄 Triggering async background processing for document {} (type: {})", documentId, eventType);
+        self.processDocumentBackground(documentId);
     }
 
     /**
@@ -195,6 +186,7 @@ public class DocumentService {
      * Generates AI summary and indexes chunks with embeddings.
      */
     @Transactional
+    @Async
     public void processDocumentBackground(Long documentId) {
         try {
             // 1. Generate summary if not present
