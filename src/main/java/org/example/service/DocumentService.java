@@ -91,35 +91,32 @@ public class DocumentService {
             response.setUploadedByEmail(document.getUploadedBy().getEmail());
         }
 
-          // Add project info if exists
-    if (document.getProject() != null) {
-        response.setProjectId(document.getProject().getId());
-        response.setProjectName(document.getProject().getName());
-    }
-    
-    
+        // Add project info if exists
+        if (document.getProject() != null) {
+            response.setProjectId(document.getProject().getId());
+            response.setProjectName(document.getProject().getName());
+        }
 
         return response;
     }
 
+    // public void chatWithDocument()
 
-//    public void chatWithDocument()
-
-    public List<DocumentResponse> getUserDocuments(String userEmail){
+    public List<DocumentResponse> getUserDocuments(String userEmail) {
         User user = userRepository.findByEmail(userEmail)
-                .orElseThrow(()-> new RuntimeException("User not found"));
+                .orElseThrow(() -> new RuntimeException("User not found"));
 
         return documentRepository.findByUploadedBy(user)
                 .stream()
-                .map(this:: toDocumentResponse)
+                .map(this::toDocumentResponse)
                 .collect(Collectors.toList());
 
     }
 
-    public DocumentResponse getDocumentById(Long documentId ,String userEmail){
+    public DocumentResponse getDocumentById(Long documentId, String userEmail) {
 
         Document document = documentRepository.findById(documentId)
-                .orElseThrow(()->new RuntimeException("Doc not found"));
+                .orElseThrow(() -> new RuntimeException("Doc not found"));
 
         User user = userRepository.findByEmail(userEmail)
                 .orElseThrow(() -> new RuntimeException("User not found"));
@@ -136,10 +133,6 @@ public class DocumentService {
 
     }
 
-
-
-
-
     // Generic upload (without project)
     @Transactional
     public DocumentResponse uploadDocument(MultipartFile file, String userEmail) throws IOException {
@@ -150,9 +143,10 @@ public class DocumentService {
 
     // Upload document to a project
     @Transactional
-    public DocumentResponse uploadDocumentToProject(MultipartFile file, String userEmail, Long projectId) throws IOException {
+    public DocumentResponse uploadDocumentToProject(MultipartFile file, String userEmail, Long projectId)
+            throws IOException {
         Project project = projectRepository.findById(projectId)
-            .orElseThrow(() -> new RuntimeException("Project not found"));
+                .orElseThrow(() -> new RuntimeException("Project not found"));
         Document saved = self.saveDocumentRecord(file, userEmail, project);
         publishDocumentEvent(saved.getId(), userEmail, "UPLOADED");
         return toDocumentResponse(saved);
@@ -219,22 +213,23 @@ public class DocumentService {
     private String generateAiSummaryOfDocument(String extractedText, String fileName) {
         try {
             // Keep the text size reasonable for the summary prompt, e.g. first 40,000 chars
-            String truncated = extractedText.length() > 40000 
-                    ? extractedText.substring(0, 40000) + "\n...[truncated for summary]" 
+            String truncated = extractedText.length() > 40000
+                    ? extractedText.substring(0, 40000) + "\n...[truncated for summary]"
                     : extractedText;
-            
+
             String prompt = String.format(
                     "Analyze the following document text (from file '%s') and generate a high-quality summary.\n" +
-                    "Include: the main topics covered, the overall structure of the document, the total estimated number of questions or sections (if it contains questions/practice sets), and key details.\n\n" +
-                    "=== DOCUMENT TEXT ===\n%s\n=== END DOCUMENT TEXT ===",
-                    fileName, truncated
-            );
-            
+                            "Include: the main topics covered, the overall structure of the document, the total estimated number of questions or sections (if it contains questions/practice sets), and key details.\n\n"
+                            +
+                            "=== DOCUMENT TEXT ===\n%s\n=== END DOCUMENT TEXT ===",
+                    fileName, truncated);
+
             org.example.group.AIRequest request = new org.example.group.AIRequest(prompt);
             org.example.group.AIResponse response = openRouterAiService.generateContent(request);
             return response.getAiSuggestion();
         } catch (Exception e) {
-            logger.warn("Could not generate AI summary for doc: {}. Falling back to default summary. Error: {}", fileName, e.getMessage());
+            logger.warn("Could not generate AI summary for doc: {}. Falling back to default summary. Error: {}",
+                    fileName, e.getMessage());
             return pdfExtractionService.getSummary(extractedText); // fallback to first 500 chars
         }
     }
@@ -246,7 +241,7 @@ public class DocumentService {
     @Transactional(propagation = org.springframework.transaction.annotation.Propagation.REQUIRES_NEW)
     public Document saveDocumentRecord(MultipartFile file, String userEmail, Project project) throws IOException {
         User user = userRepository.findByEmail(userEmail)
-            .orElseThrow(() -> new RuntimeException("User not found"));
+                .orElseThrow(() -> new RuntimeException("User not found"));
 
         Map<String, Object> uploadResult = cloudinaryService.uploadPDF(file);
 
@@ -266,28 +261,26 @@ public class DocumentService {
         document.setProcessingStatus("PROCESSING");
 
         Document saved = documentRepository.save(document);
-        logger.info("✅ Document {} saved ({} chars extracted). Background thread will generate summary and index RAG.", saved.getId(), extractedText.length());
+        logger.info("✅ Document {} saved ({} chars extracted). Background thread will generate summary and index RAG.",
+                saved.getId(), extractedText.length());
         return saved;
     }
 
-// Add this method to get documents for a specific project
-public List<DocumentResponse> getProjectDocuments(Long projectId, String userEmail) {
-    // Verify user exists
-    userRepository.findByEmail(userEmail)
-        .orElseThrow(() -> new RuntimeException("User not found"));
-    
-    // Verify project exists
-    projectRepository.findById(projectId)
-        .orElseThrow(() -> new RuntimeException("Project not found"));
-    
+    // Add this method to get documents for a specific project
+    public List<DocumentResponse> getProjectDocuments(Long projectId, String userEmail) {
+        // Verify user exists
+        userRepository.findByEmail(userEmail)
+                .orElseThrow(() -> new RuntimeException("User not found"));
 
-    
-    return documentRepository.findByProjectIdOrderByUploadedAtDesc(projectId)
-        .stream()
-        .map(this::toDocumentResponse)
-        .collect(Collectors.toList());
-}
+        // Verify project exists
+        projectRepository.findById(projectId)
+                .orElseThrow(() -> new RuntimeException("Project not found"));
 
+        return documentRepository.findByProjectIdOrderByUploadedAtDesc(projectId)
+                .stream()
+                .map(this::toDocumentResponse)
+                .collect(Collectors.toList());
+    }
 
     @Transactional
     public void deleteDocument(Long documentId, String userEmail) throws IOException {
@@ -298,7 +291,8 @@ public List<DocumentResponse> getProjectDocuments(Long projectId, String userEma
             throw new RuntimeException("Unauthorized - Only the uploader can delete this document");
         }
 
-        // Delete children first (JPQL deletes bypass first-level cache — must flush after)
+        // Delete children first (JPQL deletes bypass first-level cache — must flush
+        // after)
         chatMessageRepository.deleteByDocumentId(documentId);
         chatMessageRepository.flush();
         documentChunkRepository.deleteByDocumentId(documentId);
@@ -313,7 +307,8 @@ public List<DocumentResponse> getProjectDocuments(Long projectId, String userEma
             cloudinaryService.deleteFile(document.getPublicId());
             logger.info("✅ Deleted document {} from Cloudinary", documentId);
         } catch (Exception e) {
-            logger.warn("⚠️ Could not delete document {} from Cloudinary (may already be gone): {}", documentId, e.getMessage());
+            logger.warn("⚠️ Could not delete document {} from Cloudinary (may already be gone): {}", documentId,
+                    e.getMessage());
         }
 
         logger.info("✅ Document {} deleted successfully", documentId);
@@ -323,36 +318,47 @@ public List<DocumentResponse> getProjectDocuments(Long projectId, String userEma
         switch (intent) {
             case EXHAUSTIVE_EXTRACTION:
                 return "You are an expert exam preparation assistant and document analyst with perfect recall.\n" +
-                       "Your goal is to extract EVERY piece of specific information matching the user's request: all numeric values, all frequency bands (GHz/MHz/KHz), all definitions, all lists, all tables, all protocols with their specs, and all comparisons.\n" +
-                       "Be completely exhaustive — missing a single value is unacceptable. Format numeric data in clean markdown tables.\n" +
-                       "Every fact, value, or frequency you extract MUST be accompanied by its source citation pointing to the page number where it was found (e.g. \"[Page X]\" or \"(Page X)\") based on the block headers.";
+                        "Your goal is to extract EVERY piece of specific information matching the user's request: all numeric values, all frequency bands (GHz/MHz/KHz), all definitions, all lists, all tables, all protocols with their specs, and all comparisons.\n"
+                        +
+                        "Be completely exhaustive — missing a single value is unacceptable. Format numeric data in clean markdown tables.\n"
+                        +
+                        "Every fact, value, or frequency you extract MUST be accompanied by its source citation pointing to the page number where it was found (e.g. \"[Page X]\" or \"(Page X)\") based on the block headers.";
             case SUMMARY:
                 return "You are a summarization assistant.\n" +
-                       "Create a structured, clear, and comprehensive summary of the provided document content.\n" +
-                       "Organize the summary into logical sections (e.g. main concepts, architecture, technical specifications, and key takeaways) using Markdown headers, bullet points, and tables.\n" +
-                       "Cite the key pages (e.g. \"[Page X]\") when summarizing specific sections based on the block headers.";
+                        "Create a structured, clear, and comprehensive summary of the provided document content.\n" +
+                        "Organize the summary into logical sections (e.g. main concepts, architecture, technical specifications, and key takeaways) using Markdown headers, bullet points, and tables.\n"
+                        +
+                        "Cite the key pages (e.g. \"[Page X]\") when summarizing specific sections based on the block headers.";
             case FLASHCARD_GENERATION:
                 return "You are a study aid generator.\n" +
-                       "Generate a set of clear, high-quality question-and-answer study flashcards based on the provided document context.\n" +
-                       "Each flashcard should test an important concept, term, definition, or numeric specification.\n" +
-                       "Format the output as a clean Markdown list of \"Front (Question): ...\" and \"Back (Answer): ...\".\n" +
-                       "Include page citations (e.g. \"[Page X]\") on the back of each card to reference the source based on the block headers.";
+                        "Generate a set of clear, high-quality question-and-answer study flashcards based on the provided document context.\n"
+                        +
+                        "Each flashcard should test an important concept, term, definition, or numeric specification.\n"
+                        +
+                        "Format the output as a clean Markdown list of \"Front (Question): ...\" and \"Back (Answer): ...\".\n"
+                        +
+                        "Include page citations (e.g. \"[Page X]\") on the back of each card to reference the source based on the block headers.";
             case MCQ_GENERATION:
                 return "You are an exam generator.\n" +
-                       "Create a set of multiple-choice questions (MCQs) based on the provided document context to test the user's knowledge.\n" +
-                       "Each question must have exactly 4 options (A, B, C, D) and a clear, correct answer key with a brief explanation.\n" +
-                       "Include page citations (e.g. \"[Page X]\") in the explanation to point to the source content based on the block headers.";
+                        "Create a set of multiple-choice questions (MCQs) based on the provided document context to test the user's knowledge.\n"
+                        +
+                        "Each question must have exactly 4 options (A, B, C, D) and a clear, correct answer key with a brief explanation.\n"
+                        +
+                        "Include page citations (e.g. \"[Page X]\") in the explanation to point to the source content based on the block headers.";
             case COMPARISON:
                 return "You are an analytical assistant.\n" +
-                       "Compare and contrast the technologies, protocols, or concepts requested by the user based on the provided document context.\n" +
-                       "Create a structured comparison, highlighting key differences, advantages, disadvantages, and specifications. Use a Markdown table for side-by-side specification comparisons wherever possible.\n" +
-                       "Include page citations (e.g. \"[Page X]\") for every claim you make based on the block headers.";
+                        "Compare and contrast the technologies, protocols, or concepts requested by the user based on the provided document context.\n"
+                        +
+                        "Create a structured comparison, highlighting key differences, advantages, disadvantages, and specifications. Use a Markdown table for side-by-side specification comparisons wherever possible.\n"
+                        +
+                        "Include page citations (e.g. \"[Page X]\") for every claim you make based on the block headers.";
             case FACT_LOOKUP:
             default:
                 return "You are a precise fact-lookup assistant.\n" +
-                       "Answer the user's question using ONLY the provided document context. Do not make assumptions or extrapolate.\n" +
-                       "If the answer is not in the provided excerpts, say so honestly.\n" +
-                       "You MUST cite the page numbers of the source context blocks (e.g. \"[Page X]\") for every fact you state based on the block headers.";
+                        "Answer the user's question using ONLY the provided document context. Do not make assumptions or extrapolate.\n"
+                        +
+                        "If the answer is not in the provided excerpts, say so honestly.\n" +
+                        "You MUST cite the page numbers of the source context blocks (e.g. \"[Page X]\") for every fact you state based on the block headers.";
         }
     }
 
@@ -362,6 +368,7 @@ public List<DocumentResponse> getProjectDocuments(Long projectId, String userEma
     /**
      * Send message - handles both normal chat and AI chat
      */
+    @Transactional(propagation = org.springframework.transaction.annotation.Propagation.NOT_SUPPORTED)
     public ChatMessageResponse sendMessage(Long documentId, String userMessage, boolean aiMode, String userEmail) {
         // 1. Get document
         Document document = documentRepository.findById(documentId)
@@ -390,7 +397,8 @@ public List<DocumentResponse> getProjectDocuments(Long projectId, String userEma
                 aiChatMessage.setDocument(document);
                 aiChatMessage.setRole("assistant");
                 aiChatMessage.setSenderEmail("ai@system");
-                aiChatMessage.setContent("⏳ Document text is still being extracted. Please wait a moment and try again.");
+                aiChatMessage
+                        .setContent("⏳ Document text is still being extracted. Please wait a moment and try again.");
                 aiChatMessage.setCreatedAt(LocalDateTime.now());
                 ChatMessage savedAi = chatMessageRepository.save(aiChatMessage);
                 return new ChatMessageResponse(
@@ -399,8 +407,7 @@ public List<DocumentResponse> getProjectDocuments(Long projectId, String userEma
                         "ai@system",
                         "AI",
                         "AI",
-                        savedAi.getCreatedAt()
-                );
+                        savedAi.getCreatedAt());
             }
 
             // 🎯 RAG: Retrieve only relevant chunks instead of full document
@@ -410,8 +417,9 @@ public List<DocumentResponse> getProjectDocuments(Long projectId, String userEma
             // Build context
             StringBuilder contextBuilder = new StringBuilder();
             contextBuilder.append("You are answering questions based on the provided document context.\n");
-            
-            // Inject document metadata (filename, page count, size) so the AI can answer meta-questions
+
+            // Inject document metadata (filename, page count, size) so the AI can answer
+            // meta-questions
             contextBuilder.append("=== DOCUMENT METADATA ===\n");
             contextBuilder.append("File Name: ").append(document.getFileName()).append("\n");
             contextBuilder.append("Total Pages: ").append(document.getPageCount()).append("\n");
@@ -434,7 +442,9 @@ public List<DocumentResponse> getProjectDocuments(Long projectId, String userEma
             } else {
                 // ⚠️ No chunks yet — use up to 20000 chars of full text as fallback
                 String fullText = document.getExtractedText();
-                String truncated = fullText.length() > 20000 ? fullText.substring(0, 20000) + "\n...[truncated — document is still being indexed]" : fullText;
+                String truncated = fullText.length() > 20000
+                        ? fullText.substring(0, 20000) + "\n...[truncated — document is still being indexed]"
+                        : fullText;
                 contextBuilder.append("=== DOCUMENT CONTENT (partial) ===\n");
                 contextBuilder.append(truncated);
                 contextBuilder.append("\n=== END CONTENT ===\n\n");
@@ -459,7 +469,8 @@ public List<DocumentResponse> getProjectDocuments(Long projectId, String userEma
             String aiResponse;
             try {
                 String systemPrompt = getSystemPromptForIntent(intent);
-                org.example.group.AIResponse response = openRouterAiService.generateContent(contextBuilder.toString(), systemPrompt);
+                org.example.group.AIResponse response = openRouterAiService.generateContent(contextBuilder.toString(),
+                        systemPrompt);
                 aiResponse = response.getAiSuggestion();
             } catch (Exception e) {
                 aiResponse = "Sorry, AI service unavailable. Error: " + e.getMessage();
@@ -481,8 +492,7 @@ public List<DocumentResponse> getProjectDocuments(Long projectId, String userEma
                     "ai@system",
                     "AI",
                     "AI",
-                    savedAiMessage.getCreatedAt()
-            );
+                    savedAiMessage.getCreatedAt());
         }
 
         // 5. Normal chat - just return the saved user message (NO AI)
@@ -493,8 +503,7 @@ public List<DocumentResponse> getProjectDocuments(Long projectId, String userEma
                 userEmail,
                 userName,
                 "USER",
-                savedUserMessage.getCreatedAt()
-        );
+                savedUserMessage.getCreatedAt());
     }
 
     /**
@@ -505,7 +514,6 @@ public List<DocumentResponse> getProjectDocuments(Long projectId, String userEma
         Document document = documentRepository.findById(documentId)
                 .orElseThrow(() -> new RuntimeException("Document not found"));
 
-
         // Removed ownership check to allow collaboration
 
         // 2. Get chat history
@@ -515,12 +523,11 @@ public List<DocumentResponse> getProjectDocuments(Long projectId, String userEma
         return messages.stream()
                 .map(msg -> new ChatMessageResponse(
                         msg.getId(),
-                        msg.getContent(),                           // message
-                        msg.getSenderEmail(),   // Use STORED email, not request user
-                        msg.getSenderName(),    // Use STORED name
-                        msg.getRole().toUpperCase(),                             // messageType (USER/ASSISTANT)
-                        msg.getCreatedAt()
-                ))
+                        msg.getContent(), // message
+                        msg.getSenderEmail(), // Use STORED email, not request user
+                        msg.getSenderName(), // Use STORED name
+                        msg.getRole().toUpperCase(), // messageType (USER/ASSISTANT)
+                        msg.getCreatedAt()))
                 .toList();
     }
 }
