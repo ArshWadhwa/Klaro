@@ -14,7 +14,15 @@ plugins {
     id 'org.springframework.boot' version '3.3.3'
     id 'io.spring.dependency-management' version '1.1.6'
     id 'application'
+    id "com.github.spotbugs" version "6.0.20"
 }
+
+spotbugs {
+    ignoreFailures = true
+    showStackTraces = true
+    excludeFilter = file("${project.projectDir}/config/spotbugs/exclude.xml")
+}
+
 
 Properties props = new Properties()
 File propsFile = new File("${project.projectDir}/src/main/resources/application.properties")
@@ -84,6 +92,7 @@ dependencies {
 
     compileOnly 'org.projectlombok:lombok:1.18.30'
     annotationProcessor 'org.projectlombok:lombok:1.18.30'
+    spotbugsPlugins 'com.h3xstream.findsecbugs:findsecbugs-plugin:1.13.0'
 }
 
 configurations {
@@ -108,3 +117,11 @@ application {
     mainClass = 'org.example.Main'
     applicationDefaultJvmArgs = ['-Xms512m', '-Xmx2g', '-XX:MaxMetaspaceSize=512m']
 }
+
+tasks.withType(com.github.spotbugs.snom.SpotBugsTask) {
+    reports {
+        xml.required = false
+        html.required = true
+    }
+}
+

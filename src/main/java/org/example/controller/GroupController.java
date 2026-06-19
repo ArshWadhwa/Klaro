@@ -85,7 +85,7 @@ public class GroupController {
         try {
             if (authHeader != null && authHeader.startsWith("Bearer ")) {
                 String token = authHeader.substring(7);
-                String email = authService.getEmailFromToken(token);
+                authService.getEmailFromToken(token);
                 
                 // Only admins can view all groups
                 if (!authService.isAdmin(token)) {
@@ -110,7 +110,10 @@ public class GroupController {
             if (authHeader != null && authHeader.startsWith("Bearer ")) {
                 String token = authHeader.substring(7);
                 String email = authService.getEmailFromToken(token);
-                GroupResponse group = groupService.getGroupById(groupId);
+                if (!groupService.isUserMemberOrAdmin(groupId, email)) {
+                    return ResponseEntity.status(HttpStatus.FORBIDDEN).body("Only group members or admins can view group details");
+                }
+                GroupResponse group = groupService.getGroupById(groupId, email);
                 return ResponseEntity.ok(group);
             }
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Missing or invalid authorization header");
@@ -128,7 +131,7 @@ public class GroupController {
             if (authHeader != null && authHeader.startsWith("Bearer ")) {
                 String token = authHeader.substring(7);
                 String email = authService.getEmailFromToken(token);
-                List<GroupResponse> groups = groupService.searchGroups(query);
+                List<GroupResponse> groups = groupService.searchGroups(query, email);
                 return ResponseEntity.ok(groups);
             }
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Missing or invalid authorization header");
@@ -259,9 +262,24 @@ public class GroupController {
     }
 
     @GetMapping("/{groupId}/member-emails")
-    public ResponseEntity<List<String>> getGroupMemberEmails(@PathVariable Long groupId) {
-        List<String> emails = groupService.getGroupMemberEmails(groupId);
-        return ResponseEntity.ok(emails);
+    public ResponseEntity<?> getGroupMemberEmails(
+            @PathVariable Long groupId,
+            @RequestHeader("Authorization") String authHeader
+    ) {
+        try {
+            if (authHeader != null && authHeader.startsWith("Bearer ")) {
+                String token = authHeader.substring(7);
+                String email = authService.getEmailFromToken(token);
+                if (!groupService.isUserMemberOrAdmin(groupId, email)) {
+                    return ResponseEntity.status(HttpStatus.FORBIDDEN).body("Only group members or admins can view member emails");
+                }
+                List<String> emails = groupService.getGroupMemberEmails(groupId);
+                return ResponseEntity.ok(emails);
+            }
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Missing or invalid authorization header");
+        } catch (RuntimeException e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
+        }
     }
 
     @GetMapping("/{groupId}/members")
@@ -272,7 +290,7 @@ public class GroupController {
         try {
             if (authHeader != null && authHeader.startsWith("Bearer ")) {
                 String token = authHeader.substring(7);
-                String email = authService.getEmailFromToken(token);
+                authService.getEmailFromToken(token);
 
                 // Only admins can view group members
                 if (!authService.isAdmin(token)) {

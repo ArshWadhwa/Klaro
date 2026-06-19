@@ -34,7 +34,7 @@ public class NotificationController {
         try {
             if (authHeader != null && authHeader.startsWith("Bearer ")) {
                 String token = authHeader.substring(7);
-                String email = authService.getEmailFromToken(token);
+                authService.getEmailFromToken(token);
                 String fullName = authService.getFullNameFromToken(token);
                 
                 List<Notification> notifications = notificationService.getNotification(fullName);

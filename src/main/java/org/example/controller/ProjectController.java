@@ -28,6 +28,28 @@ public class ProjectController {
 
     @Autowired private ProjectService service;
     @Autowired private AuthService authService;
+    @Autowired private org.example.service.GroupService groupService;
+
+    @GetMapping("/groups/{groupId}/projects")
+    public ResponseEntity<?> getProjectsByGroup(
+            @PathVariable Long groupId,
+            @RequestHeader("Authorization") String authHeader
+            ){
+        try {
+            if (authHeader != null && authHeader.startsWith("Bearer ")) {
+                String token = authHeader.substring(7);
+                String email = authService.getEmailFromToken(token);
+                if (!groupService.isUserMemberOrAdmin(groupId, email)) {
+                    return ResponseEntity.status(HttpStatus.FORBIDDEN).body("Only group members or admins can view group projects");
+                }
+                List<ProjectResponse> projects = service.getProjectsByGroup(groupId);
+                return ResponseEntity.ok(projects);
+            }
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Missing or invalid authorization header");
+        } catch (RuntimeException e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
+        }
+    }
 
     @PostMapping
     public ResponseEntity<?> createProject(
@@ -86,7 +108,7 @@ public class ProjectController {
         try {
             if (authHeader != null && authHeader.startsWith("Bearer ")) {
                 String token = authHeader.substring(7);
-                String email = authService.getEmailFromToken(token);
+                authService.getEmailFromToken(token);
                 
                 // Only admins can view all projects
                 if (!authService.isAdmin(token)) {
@@ -101,22 +123,6 @@ public class ProjectController {
             return ResponseEntity.badRequest().body(e.getMessage());
         }
     }
-
-    @GetMapping("/groups/{groupId}/projects")
-    public ResponseEntity<?> getProjectsByGroup(
-            @PathVariable Long groupId,
-            @RequestHeader("Authorization") String authHeader
-            ){
-        try {
-            if (authHeader != null && authHeader.startsWith("Bearer ")) {
-                String token = authHeader.substring(7);
-                String email = authService.getEmailFromToken(token);
-                List<ProjectResponse> projects = service.getProjectsByGroup(groupId);
-                return ResponseEntity.ok(projects);
-            }
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Missing or invalid authorization header");
-        } catch (RuntimeException e) {
-            return ResponseEntity.badRequest().body(e.getMessage());
-        }
-    }
 }
+
+

@@ -124,7 +124,7 @@ public class IssueController {
         try {
             if (authHeader != null && authHeader.startsWith("Bearer ")) {
                 String token = authHeader.substring(7);
-                String email = authService.getEmailFromToken(token);
+                authService.getEmailFromToken(token);
                 
                 // Get AI recommendation
                 AIResponse recommendation = issueService.getAIRecommendationForIssue(issueId);
@@ -216,7 +216,7 @@ public class IssueController {
         try {
             if (authHeader != null && authHeader.startsWith("Bearer ")) {
                 String token = authHeader.substring(7);
-                String email = authService.getEmailFromToken(token);
+                authService.getEmailFromToken(token);
                 
                 // Get all issues
                 List<Issue> issues = issueRepository.findAll();

@@ -21,6 +21,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
+import org.hibernate.Hibernate;
 
 @Service
 @Transactional
@@ -41,6 +42,8 @@ public class GroupService {
 
     @Autowired
     private NotificationService notificationService;
+
+    private final java.security.SecureRandom secureRandom = new java.security.SecureRandom();
 
     public GroupResponse createGroup(CreateGroupRequest request, String currentUserEmail) {
         User currentUser = userRepository.findByEmail(currentUserEmail)
@@ -86,7 +89,7 @@ public class GroupService {
 
 
         // ✅ FORCE INITIALIZE
-        groupWithMembers.getMembers().size();
+        Hibernate.initialize(groupWithMembers.getMembers());
 
         System.out.println("🔍 DEBUG - Created group members: " + groupWithMembers.getMembers().size());
 
@@ -256,13 +259,12 @@ public class GroupService {
 
 
 
-        private String generateCode(){
+    private String generateCode(){
         String chars="ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
         StringBuilder code = new StringBuilder();
-        java.util.Random random = new java.util.Random();
 
         for (int i = 0; i < 10; i++) {
-            code.append(chars.charAt(random.nextInt(chars.length())));
+            code.append(chars.charAt(secureRandom.nextInt(chars.length())));
         }
 
         return code.toString();
@@ -281,19 +283,36 @@ public class GroupService {
 
 
 
-    public GroupResponse getGroupById(Long groupId) {
+    public boolean isUserMemberOrAdmin(Long groupId, String email) {
+        User user = userRepository.findByEmail(email)
+                .orElse(null);
+        if (user == null) {
+            return false;
+        }
+        if ("ROLE_ADMIN".equals(user.getRole().toString())) {
+            return true;
+        }
+        Group group = groupRepository.findByIdWithMembers(groupId)
+                .orElse(null);
+        if (group == null) {
+            return false;
+        }
+        return group.isOwner(user) || group.isMember(user);
+    }
+
+    public GroupResponse getGroupById(Long groupId, String currentUserEmail) {
         Group group = groupRepository.findByIdWithMembers(groupId)
                 .orElseThrow(() -> new RuntimeException("Group not found"));
 
 
         // ✅ FORCE INITIALIZE members collection
-        group.getMembers().size(); // This triggers Hibernate to load the collection
+        Hibernate.initialize(group.getMembers()); // This triggers Hibernate to load the collection
 
         System.out.println("🔍 DEBUG - Group ID: " + group.getId());
         System.out.println("📊 DEBUG - Members size: " + group.getMembers().size());
         System.out.println("👥 DEBUG - Members: " + group.getMembers());
 
-        return toGroupResponse(group);
+        return toGroupResponse(group, currentUserEmail);
     }
 
     public List<GroupMemberResponse> getGroupMembers(Long groupId) {
@@ -312,16 +331,20 @@ public class GroupService {
                 .collect(Collectors.toList());
     }
 
-    public GroupResponse getGroupByName(String groupName) {
+    public GroupResponse getGroupByName(String groupName, String currentUserEmail) {
         Group group = groupRepository.findByName(groupName)
                 .orElseThrow(() -> new RuntimeException("Group not found"));
-        return toGroupResponse(group);
+        return toGroupResponse(group, currentUserEmail);
     }
 
-    public List<GroupResponse> searchGroups(String searchTerm) {
+    public List<GroupResponse> searchGroups(String searchTerm, String currentUserEmail) {
+        User user = userRepository.findByEmail(currentUserEmail)
+                .orElseThrow(() -> new RuntimeException("User not found"));
+        boolean isAdmin = authService.isAdminByEmail(currentUserEmail);
         List<Group> groups = groupRepository.searchGroups(searchTerm);
         return groups.stream()
-                .map(this::toGroupResponse)
+                .filter(group -> isAdmin || group.isOwner(user) || group.isMember(user))
+                .map(group -> this.toGroupResponse(group, currentUserEmail))
                 .collect(Collectors.toList());
     }
 
@@ -347,7 +370,7 @@ public class GroupService {
 
         group.addMember(newMember);
         Group savedGroup = groupRepository.save(group);
-        return toGroupResponse(savedGroup);
+        return toGroupResponse(savedGroup, currentUserEmail);
     }
 
     public void addMembersTOGroup(Long groupId, List<Long> userIds){
@@ -409,7 +432,7 @@ public class GroupService {
         Group groupWithMembers = groupRepository.findByIdWithMembers(savedGroup.getId())
                 .orElseThrow(() -> new RuntimeException("Group not found"));
 
-        return toGroupResponse(groupWithMembers);
+        return toGroupResponse(groupWithMembers, currentUserEmail);
     }
 
     public GroupResponse removeMemberFromGroup(Long groupId, String memberEmail, String currentUserEmail) {
@@ -443,7 +466,7 @@ public class GroupService {
         Group groupWithMembers = groupRepository.findByIdWithMembers(savedGroup.getId())
                 .orElseThrow(() -> new RuntimeException("Group not found"));
 
-        return toGroupResponse(groupWithMembers);
+        return toGroupResponse(groupWithMembers, currentUserEmail);
     }
 
 
@@ -465,6 +488,10 @@ public class GroupService {
     }
 
     private GroupResponse toGroupResponse(Group group) {
+        return toGroupResponse(group, null);
+    }
+
+    private GroupResponse toGroupResponse(Group group, String currentUserEmail) {
         GroupResponse response = new GroupResponse();
         response.setId(group.getId());
         response.setName(group.getName());
@@ -474,8 +501,19 @@ public class GroupService {
         response.setCreatedAt(group.getCreatedAt());
         response.setUpdatedAt(group.getUpdatedAt());
         response.setMemberCount(group.getMembers().size());
-        response.setInviteCode(group.getInviteCode());
         response.setProjectCount(group.getProjects() != null ? group.getProjects().size() : 0);
+
+        if (currentUserEmail != null) {
+            User currentUser = userRepository.findByEmail(currentUserEmail).orElse(null);
+            boolean isAdmin = authService.isAdminByEmail(currentUserEmail);
+            if (group.isOwner(currentUser) || isAdmin) {
+                response.setInviteCode(group.getInviteCode());
+            } else {
+                response.setInviteCode(null);
+            }
+        } else {
+            response.setInviteCode(null);
+        }
 
         // Convert members to DTOs
         List<GroupMemberResponse> memberResponses = group.getMembers().stream()

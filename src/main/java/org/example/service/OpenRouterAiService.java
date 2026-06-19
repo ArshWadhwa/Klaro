@@ -67,10 +67,7 @@ public class OpenRouterAiService {
         return new AIResponse("⚠️ AI service is temporarily unavailable. Please try again in a moment.");
     }
 
-    private String callGroq(String model, String userContent) throws IOException {
-        return callGroq(model, userContent,
-                "You are a helpful AI assistant. Answer questions based on the provided document context concisely and accurately.");
-    }
+
 
     private String callGroq(String model, String userContent, String systemPrompt) throws IOException {
         ObjectNode root = mapper.createObjectNode();
@@ -113,7 +110,8 @@ public class OpenRouterAiService {
                 .build();
 
         try (Response response = client.newCall(httpRequest).execute()) {
-            String responseBody = response.body() != null ? response.body().string() : "";
+            ResponseBody responseBodyObj = response.body();
+            String responseBody = responseBodyObj != null ? responseBodyObj.string() : "";
 
             if (!response.isSuccessful()) {
                 logger.error("Groq [{}] HTTP {}: {}", model, response.code(), responseBody);

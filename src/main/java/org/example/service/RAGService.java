@@ -264,7 +264,7 @@ public class RAGService {
         if (extractedText.length() <= 60000) {
             logger.info("📄 Document {} is short ({} chars) — using full text for 100% coverage",
                     documentId, extractedText.length());
-            return String.format("[Document: %s - Full Text]\n%s", document.getFileName(), extractedText);
+            return "[Document: " + document.getFileName() + " - Full Text]\n" + extractedText;
         }
 
         List<DocumentChunk> allChunks = documentChunkRepository.findByDocumentIdOrderByChunkIndexAsc(documentId);
@@ -590,7 +590,7 @@ public class RAGService {
                     ? (startPage == endPage ? "Page " + startPage : "Pages " + startPage + "-" + endPage)
                     : "Unknown Page";
 
-            String blockHeader = String.format("[Context Block %d - Document: %s, %s]\n", blockNum++, fileName,
+            String blockHeader = String.format("[Context Block %d - Document: %s, %s]%n", blockNum++, fileName,
                     pageRangeStr);
             String blockContent = groupText.toString().trim();
             String fullBlock = blockHeader + blockContent + "\n\n---\n\n";
@@ -777,7 +777,7 @@ public class RAGService {
 
         if (allBlocks.isEmpty()) {
             // Fallback if no blocks extracted
-            chunks.add(String.format("[Document: %s, Page: 1]\n%s", fileName, text.trim()));
+            chunks.add("[Document: " + fileName + ", Page: 1]\n" + text.trim());
             return chunks;
         }
 
@@ -803,7 +803,7 @@ public class RAGService {
                     .map(b -> b.text)
                     .collect(Collectors.joining("\n\n"));
 
-            String formattedText = String.format("[Document: %s, Pages: %d-%d]\n%s",
+            String formattedText = String.format("[Document: %s, Pages: %d-%d]%n%s",
                     fileName, startPage, endPage, rawText);
             chunks.add(formattedText);
 

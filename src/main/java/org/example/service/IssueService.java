@@ -104,15 +104,15 @@ public class IssueService {
         
         // Create a prompt for AI with issue details
         String prompt = String.format(
-            "Analyze this issue and provide recommendations:\n\n" +
-            "Title: %s\n" +
-            "Type: %s\n" +
-            "Priority: %s\n" +
-            "Description: %s\n\n" +
-            "Please provide:\n" +
-            "1. Brief analysis of the issue\n" +
-            "2. Suggested approach to solve it\n" +
-            "3. Estimated complexity (Low/Medium/High)\n" +
+            "Analyze this issue and provide recommendations:%n%n" +
+            "Title: %s%n" +
+            "Type: %s%n" +
+            "Priority: %s%n" +
+            "Description: %s%n%n" +
+            "Please provide:%n" +
+            "1. Brief analysis of the issue%n" +
+            "2. Suggested approach to solve it%n" +
+            "3. Estimated complexity (Low/Medium/High)%n" +
             "4. Potential risks or things to watch out for",
             issue.getTitle(),
             issue.getType(),
@@ -154,7 +154,7 @@ public class IssueService {
         Issue issue = issueRepository.findById(issueId)
                 .orElseThrow(() -> new RuntimeException("Issue not found"));
 
-        User user = userRepository.findByEmail(currentUserEmail)
+        userRepository.findByEmail(currentUserEmail)
                 .orElseThrow(() -> new RuntimeException("User not found"));
 
 //        // 🔐 Permission check (VERY IMPORTANT)

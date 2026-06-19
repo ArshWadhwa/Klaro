@@ -65,11 +65,7 @@ public class EmbeddingService {
 
         while (attempt < maxRetries) {
             try {
-                String requestJson = """
-                        {
-                          "inputs": %s
-                        }
-                        """.formatted(mapper.writeValueAsString(text));
+                String requestJson = "{\"inputs\":" + mapper.writeValueAsString(text) + "}";
 
                 RequestBody body = RequestBody.create(
                         requestJson,
@@ -82,7 +78,8 @@ public class EmbeddingService {
                         .build();
 
                 try (Response response = client.newCall(request).execute()) {
-                    String responseBody = response.body() != null ? response.body().string() : "";
+                    ResponseBody responseBodyObj = response.body();
+                    String responseBody = responseBodyObj != null ? responseBodyObj.string() : "";
 
                     if (!response.isSuccessful()) {
                         JsonNode rootNode = mapper.readTree(responseBody);
@@ -137,11 +134,7 @@ public class EmbeddingService {
 
         while (attempt < maxRetries) {
             try {
-                String requestJson = """
-                        {
-                          "inputs": %s
-                        }
-                        """.formatted(mapper.writeValueAsString(texts));
+                String requestJson = "{\"inputs\":" + mapper.writeValueAsString(texts) + "}";
 
                 RequestBody body = RequestBody.create(
                         requestJson,
@@ -154,7 +147,8 @@ public class EmbeddingService {
                         .build();
 
                 try (Response response = client.newCall(request).execute()) {
-                    String responseBody = response.body() != null ? response.body().string() : "";
+                    ResponseBody responseBodyObj = response.body();
+                    String responseBody = responseBodyObj != null ? responseBodyObj.string() : "";
 
                     if (!response.isSuccessful()) {
                         JsonNode rootNode = mapper.readTree(responseBody);

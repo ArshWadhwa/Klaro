@@ -11,9 +11,9 @@ import java.util.Base64;
 import java.util.Date;
 
 @Component
-public class JwtUtil {
+public final class JwtUtil {
     private final byte[] secretBytes;
-    private final long expirationMs = 86400000;
+    private static final long EXPIRATION_MS = 86400000;
 
     public JwtUtil(@Value("${jwt.secret}") String secret) {
         try {
@@ -45,8 +45,10 @@ public class JwtUtil {
                 .setSubject(email)
                 .claim("fullName", fullName)
                 .claim("role", role)
+                .setIssuer("Klaro API")
+                .setAudience("Klaro Client")
                 .setIssuedAt(new Date())
-                .setExpiration(new Date(System.currentTimeMillis() + expirationMs))
+                .setExpiration(new Date(System.currentTimeMillis() + EXPIRATION_MS))
                 .signWith(key, SignatureAlgorithm.HS512)
                 .compact();
     }
@@ -69,8 +71,8 @@ public class JwtUtil {
     public boolean validateToken(String token) {
         try {
             SecretKey key = Keys.hmacShaKeyFor(secretBytes);
-            Jwts.parserBuilder().setSigningKey(key).build().parseClaimsJws(token);
-            return true;
+            Claims claims = Jwts.parserBuilder().setSigningKey(key).build().parseClaimsJws(token).getBody();
+            return "Klaro API".equals(claims.getIssuer()) && "Klaro Client".equals(claims.getAudience());
         } catch (JwtException | IllegalArgumentException e) {
             return false;
         }

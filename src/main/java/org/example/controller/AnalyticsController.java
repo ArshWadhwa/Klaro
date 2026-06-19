@@ -29,7 +29,7 @@ public class AnalyticsController {
         try {
             if (authHeader != null && authHeader.startsWith("Bearer ")) {
                 String token = authHeader.substring(7);
-                String email = authService.getEmailFromToken(token);
+                authService.getEmailFromToken(token);
                 
                 // Get dashboard analytics
                 DashboardAnalytics analytics = analyticsService.getDashboardAnalytics();
