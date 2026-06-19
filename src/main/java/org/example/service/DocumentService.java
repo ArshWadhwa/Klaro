@@ -218,10 +218,10 @@ public class DocumentService {
                     : extractedText;
 
             String prompt = String.format(
-                    "Analyze the following document text (from file '%s') and generate a high-quality summary.\n" +
-                            "Include: the main topics covered, the overall structure of the document, the total estimated number of questions or sections (if it contains questions/practice sets), and key details.\n\n"
+                    "Analyze the following document text (from file '%s') and generate a high-quality summary.%n" +
+                            "Include: the main topics covered, the overall structure of the document, the total estimated number of questions or sections (if it contains questions/practice sets), and key details.%n%n"
                             +
-                            "=== DOCUMENT TEXT ===\n%s\n=== END DOCUMENT TEXT ===",
+                            "=== DOCUMENT TEXT ===%n%s%n=== END DOCUMENT TEXT ===",
                     fileName, truncated);
 
             org.example.group.AIRequest request = new org.example.group.AIRequest(prompt);

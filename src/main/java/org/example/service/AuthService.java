@@ -56,7 +56,7 @@ public class AuthService {
         user.setRole(signupRequest.getRole()); // Set the role from request
 
         System.out.println("Saving user to DB: " + user.getEmail() + " with role: " + user.getRole());
-        user = userRepository.save(user);
+        userRepository.save(user);
 
         return "User registered successfully!";
     }
@@ -82,7 +82,8 @@ public class AuthService {
                 .map(RefreshToken::getUser)
                 .map(user -> {
                     String token = jwtUtil.generateToken(user.getEmail(), user.getFullName(), user.getRole().toString());
-                    return new TokenRefreshResponse(token, requestRefreshToken, "Bearer");
+                    String newRefreshToken = refreshTokenService.createRefreshToken(user.getEmail()).getToken();
+                    return new TokenRefreshResponse(token, newRefreshToken, "Bearer");
                 })
                 .orElseThrow(() -> new RuntimeException("Refresh token is not in database!"));
     }

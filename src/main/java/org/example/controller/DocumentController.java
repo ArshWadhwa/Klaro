@@ -92,7 +92,7 @@ public class DocumentController {
             String token = authHeader.substring(7);
             String userEmail = authService.getEmailFromToken(token);
 
-            DocumentResponse response = documentService.reprocessDocument(documentId, userEmail);
+            documentService.reprocessDocument(documentId, userEmail);
 
             return ResponseEntity.ok(
                     Map.of(

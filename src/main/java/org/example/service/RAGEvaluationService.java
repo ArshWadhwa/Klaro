@@ -67,7 +67,7 @@ public class RAGEvaluationService {
     );
 
     public EvalReport evaluateDocumentRAG(Long documentId, String userEmail) {
-        Document document = documentRepository.findById(documentId)
+        documentRepository.findById(documentId)
                 .orElseThrow(() -> new RuntimeException("Document not found: " + documentId));
 
         List<EvalResult> results = new ArrayList<>();
